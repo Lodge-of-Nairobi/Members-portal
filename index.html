@@ -9815,7 +9815,9 @@ function approvePending(pid){
     if(!r.ok){r.text().then(function(t){alert('Approve failed: '+t);});return;}
     PENDING_MEMBERS=PENDING_MEMBERS.filter(function(x){return x.id!==pid;});
     if(!MEMBERS.find(function(m){return m.id===pid;})){
-      MEMBERS.push({id:p.id,name:p.name,email:p.email,office:'',deg:p.deg||'EA',sub:'Unpaid',role:'brother'});
+      // Carry over the full registration record (dob, phone, ceremony dates)
+      // through dbMember so dates are normalised — not a stripped skeleton.
+      MEMBERS.push(dbMember(Object.assign({}, p, patch)));
       MEMBERS.sort(function(a,b){return a.name.localeCompare(b.name);});
     }
     alert(p.name+' approved. They can now log in.');
@@ -10081,7 +10083,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-06 10:40:00');
+console.log('Portal build 2026-11-12 16:45:00');
 
 function toggleSharePractice(){
   if(!CU)return;
