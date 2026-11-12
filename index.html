@@ -6505,7 +6505,10 @@ function rCalendar(){
     h2+='<div style="flex:1">';
     h2+='<div style="font-weight:700;font-size:14px;color:var(--navy)'+(cancelled?';text-decoration:line-through':'')+'">'+ev.title+'</div>';
     if(cancelled)h2+='<div style="font-size:11px;color:var(--bad);font-weight:700">Cancelled</div>';
-    h2+='<div style="font-size:11px;color:var(--t3)">'+ev.venue+'</div></div>';
+    var tstr='';
+    if(ev.time){var tp=String(ev.time).split(':');var hh=parseInt(tp[0],10);var mm=tp[1]||'00';if(!isNaN(hh)){var ap=hh<12?'AM':'PM';var h12=hh%12;if(h12===0)h12=12;tstr=h12+':'+mm+' '+ap;}}
+    var meta=[tstr,ev.venue].filter(Boolean).join(' &middot; ');
+    h2+='<div style="font-size:11px;color:var(--t3)">'+meta+'</div></div>';
     h2+='<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">';
     if(!cancelled)h2+='<span class="badge" style="background:'+e.bg+';color:'+e.c+'">'+e.label+'</span>';
     if(isSec){
@@ -10083,7 +10086,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-12 16:45:00');
+console.log('Portal build 2026-11-12 16:52:00');
 
 function toggleSharePractice(){
   if(!CU)return;
