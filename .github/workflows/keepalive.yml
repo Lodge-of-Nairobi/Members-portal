@@ -1,0 +1,29 @@
+name: Supabase keep-alive
+
+# Pings the lodge Supabase project once a day so it never hits the free-tier
+# 7-day inactivity pause, even if nobody opens the portal for a while.
+# Runs in GitHub's cloud on a schedule, independent of any member using the app.
+# The URL + anon key below are the same public values that ship in the portal,
+# so no repository secrets are required.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'      # every day at 03:00 UTC (06:00 Nairobi)
+  workflow_dispatch:          # lets you run it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the database to reset the pause timer
+        run: |
+          CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "https://ojfmldoaqjmedwxyjuee.supabase.co/rest/v1/members?select=id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qZm1sZG9hcWptZWR3eHlqdWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0NDc3NTMsImV4cCI6MjExMDAyMzc1M30.-6t_q98M8Af-F0ie4MkJihTU24v-qmLbaaJpIUkSiRI" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qZm1sZG9hcWptZWR3eHlqdWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0NDc3NTMsImV4cCI6MjExMDAyMzc1M30.-6t_q98M8Af-F0ie4MkJihTU24v-qmLbaaJpIUkSiRI")
+          echo "Supabase responded HTTP $CODE"
+          # Any response from the project counts as activity. Only fail on a
+          # server error or no response at all, so RLS-empty (200) passes.
+          if [ -z "$CODE" ] || [ "$CODE" -ge 500 ]; then
+            echo "Keep-alive ping failed."; exit 1
+          fi
