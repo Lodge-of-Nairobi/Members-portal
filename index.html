@@ -5127,7 +5127,7 @@ function addNewMember(){
   if(!tmpPw||!tmpPw.value.trim()){alert('Enter a temporary password for the member.');return;}
 
   var initV=init?init.value:'', passV=pass_?pass_.value:'', raiseV=raise?raise.value:'';
-  var deg=degreeFromDates(initV,passV,raiseV);
+  var deg=degreeFromDates(initV,passV,raiseV)||'EA';
   var em=email.value.trim().toLowerCase(), nm=name.value.trim();
   var btn=document.getElementById('nm-add-btn');
   if(btn){btn.textContent='Creating…';btn.disabled=true;}
@@ -5679,7 +5679,7 @@ function saveMemberDetail(){
   m.pass_ = get('nm-pass');
   m.raise = get('nm-raise');
   m.installedDate = get('nm-installed');
-  m.deg   = degreeFromDates(m.init, m.pass_, m.raise);
+  m.deg   = degreeFromDates(m.init, m.pass_, m.raise) || m.deg || 'EA';
   m.sub    = get('nm-sub')||m.sub;
   m.office = get('nm-office');
   m.role   = officeToRole(m.office);
@@ -6093,7 +6093,7 @@ function importCSV(){
     var init=row.init||row.initiated||'';
     var pass_=row.pass_||row.passed||'';
     var raise=row.raise||row.raised||'';
-    var deg=degreeFromDates(init,pass_,raise);
+    var deg=degreeFromDates(init,pass_,raise)||'EA';
     MEMBERS.push({
       id:'m'+Date.now()+Math.random().toString(36).slice(2,6),
       name:row.name.trim(),
@@ -10086,7 +10086,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-12 16:52:00');
+console.log('Portal build 2026-11-19 16:20:00');
 
 function toggleSharePractice(){
   if(!CU)return;
