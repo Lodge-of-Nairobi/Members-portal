@@ -2238,6 +2238,11 @@ function fd(s){if(!s)return'—';return new Date(s).toLocaleDateString('en-GB',{
 function ys(s){if(!s)return null;return new Date().getFullYear()-new Date(s).getFullYear();}
 function gm(id){return MEMBERS.find(function(m){return m.id===id;})||null;}
 function gn(m){return m?m.name.replace('W.Bro. ','').replace('Bro. ',''):'—';}
+function memPrefix(m){ return (m&&m.installedDate&&String(m.installedDate).trim())?'W. Bro. ':'Bro. '; }
+function dn(m){ return m?(memPrefix(m)+gn(m)):'—'; }
+function _rankIsOther(r){ return r==='Other'; }
+function _guestPrefix(g){ if(!g)return''; if(!g.isMason)return g.customPrefix||''; switch(g.rank){ case 'Entered Apprentice': case 'Fellow Craft': case 'Master Mason': return 'Bro.'; case 'Installed Master (WM)': case 'Past Master': return 'W. Bro.'; case 'Provincial/District Grand Officer': return 'V.W. Bro.'; case 'Grand Officer': return 'R.W. Bro.'; case 'Other': return (g.customPrefix||'').trim()||'Bro.'; default: return 'Bro.'; } }
+function _guestName(g){ var p=_guestPrefix(g); return (p?p+' ':'')+((g&&g.name)||''); }
 
 function sc(s){return s==='Paid'?'var(--ok)':s==='Arrears'?'var(--bad)':s==='Honorary'?'var(--info)':'var(--t3)';}
 function db(d){var m={EA:{bg:'#e8f0fb',c:'#1a5080'},FC:{bg:'#e8f5ee',c:'#1a7a40'},MM:{bg:'#f3eafc',c:'#5a2080'}};var t=m[d]||{bg:'#eee',c:'#555'};return '<span class="badge" style="background:'+t.bg+';color:'+t.c+'">'+d+'</span>';}
@@ -2762,7 +2767,7 @@ function rMembers(){
   h+='<div id="mem-list">';
   MEMBERS.forEach(function(m){
     h+='<div class="card" style="margin-bottom:6px;padding:12px 14px"><div class="srow">';
-    h+='<div style="flex:1"><div style="font-weight:600;font-size:14px;color:var(--navy)">'+m.name+'</div>';
+    h+='<div style="flex:1"><div style="font-weight:600;font-size:14px;color:var(--navy)">'+dn(m)+'</div>';
     h+='<div style="font-size:11px;color:var(--t3);margin-top:2px">'+m.deg+(m.office?' &middot; '+m.office:'')+'</div></div>';
     h+='</div></div>';
   });
@@ -3293,18 +3298,18 @@ function attendanceSummary(){
   h+='</div>';
   if(att.length){
     h+='<div style="font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Attending</div>';
-    att.forEach(function(m){h+='<div class="stat-row"><div class="stat-dot" style="background:var(--ok)"></div><div style="flex:1;font-size:13px">'+m.name+'</div></div>';});
+    att.forEach(function(m){h+='<div class="stat-row"><div class="stat-dot" style="background:var(--ok)"></div><div style="flex:1;font-size:13px">'+dn(m)+'</div></div>';});
   }
   if(apo.length){
     h+='<div style="font-size:11px;font-weight:700;color:var(--warn);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">Apologies</div>';
     apo.forEach(function(m){
       var note=(RSVP[m.id]&&RSVP[m.id].note)?RSVP[m.id].note:'';
-      h+='<div class="stat-row" style="align-items:flex-start"><div class="stat-dot" style="background:var(--warn);margin-top:5px"></div><div style="flex:1"><div style="font-size:13px">'+m.name+'</div>'+(note?'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+note+'</div>':'')+'</div></div>';
+      h+='<div class="stat-row" style="align-items:flex-start"><div class="stat-dot" style="background:var(--warn);margin-top:5px"></div><div style="flex:1"><div style="font-size:13px">'+dn(m)+'</div>'+(note?'<div style="font-size:11px;color:var(--t3);margin-top:2px">'+note+'</div>':'')+'</div></div>';
     });
   }
   if(none.length){
     h+='<div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">No response</div>';
-    none.forEach(function(m){h+='<div class="stat-row"><div class="stat-dot" style="background:var(--bdr2)"></div><div style="flex:1;font-size:13px;color:var(--t3)">'+m.name+'</div></div>';});
+    none.forEach(function(m){h+='<div class="stat-row"><div class="stat-dot" style="background:var(--bdr2)"></div><div style="flex:1;font-size:13px;color:var(--t3)">'+dn(m)+'</div></div>';});
   }
   h+='</div>';
   return h;
@@ -3617,8 +3622,8 @@ function rDuties(){
         h+='<div style="background:var(--goldbg);border:1px solid var(--bdr);border-radius:8px;padding:12px;margin-top:8px">';
         h+='<div style="font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;margin-bottom:10px">Who delivered?</div>';
         h+='<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">';
-        h+='<button class="btn btn-navy btn-sm" style="justify-content:flex-start" data-caid="'+a.id+'" data-del="'+a.prim+'" onclick="confirmDelivery(this.dataset.caid,this.dataset.del)"><svg class="ico" width="16" height="16"><use href="#ico-check"/></svg> Primary: '+(pm2?pm2.name:'')+'</button>';
-        if(a.back)h+='<button class="btn btn-out btn-sm" style="justify-content:flex-start;border-color:var(--warn);color:var(--warn)" data-caid="'+a.id+'" data-del="'+a.back+'" onclick="confirmDelivery(this.dataset.caid,this.dataset.del)"><svg class="ico" width="16" height="16"><use href="#ico-shield-off"/></svg> Backup: '+(bk2?bk2.name:'')+'</button>';
+        h+='<button class="btn btn-navy btn-sm" style="justify-content:flex-start" data-caid="'+a.id+'" data-del="'+a.prim+'" onclick="confirmDelivery(this.dataset.caid,this.dataset.del)"><svg class="ico" width="16" height="16"><use href="#ico-check"/></svg> Primary: '+(pm2?dn(pm2):'')+'</button>';
+        if(a.back)h+='<button class="btn btn-out btn-sm" style="justify-content:flex-start;border-color:var(--warn);color:var(--warn)" data-caid="'+a.id+'" data-del="'+a.back+'" onclick="confirmDelivery(this.dataset.caid,this.dataset.del)"><svg class="ico" width="16" height="16"><use href="#ico-shield-off"/></svg> Backup: '+(bk2?dn(bk2):'')+'</button>';
         h+='</div><div class="fg"><label class="lbl">Notes (optional)</label><input id="del-notes-'+a.id+'" placeholder="e.g. Primary unwell"></div></div>';
       }
     }
@@ -3640,7 +3645,7 @@ function rDuties(){
       h+='<div style="font-size:12px;color:var(--t3);margin-bottom:8px">'+dl.mdate+'</div>';
       h+='<div style="font-size:12px;color:var(--t2)">Delivered by <strong>'+(dby?gn(dby):'—')+'</strong></div>';
       if(dl.notes)h+='<div style="font-size:11px;color:var(--t2);margin-top:6px">'+dl.notes+'</div>';
-      h+='<div style="font-size:10px;color:var(--t3);margin-top:4px">Confirmed by '+(cby?cby.name:'')+'  &middot;  '+dl.confirmedDate+'</div>';
+      h+='<div style="font-size:10px;color:var(--t3);margin-top:4px">Confirmed by '+(cby?dn(cby):'')+'  &middot;  '+dl.confirmedDate+'</div>';
       h+='</div>';
     });
   }
@@ -3861,7 +3866,7 @@ function rAssignForm(){
   h+='<div class="fg"><label class="lbl">Primary (to deliver)</label><select id="af-prim">';
   h+='<option value="">— Select brother —</option>';
   MEMBERS.forEach(function(m){
-    h+='<option value="'+m.id+'">'+m.name+'</option>';
+    h+='<option value="'+m.id+'">'+dn(m)+'</option>';
   });
   h+='</select></div>';
 
@@ -3869,7 +3874,7 @@ function rAssignForm(){
   h+='<div class="fg"><label class="lbl">Standby</label><select id="af-back">';
   h+='<option value="">— None —</option>';
   MEMBERS.forEach(function(m){
-    h+='<option value="'+m.id+'">'+m.name+'</option>';
+    h+='<option value="'+m.id+'">'+dn(m)+'</option>';
   });
   h+='</select></div>';
 
@@ -3965,7 +3970,7 @@ function rReports(){
       h+='<div style="margin-top:12px;font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Not yet paid</div>';
       unpaidMs.forEach(function(m){
         h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bdr);font-size:13px">';
-        h+='<div style="flex:1">'+m.name+'</div>';
+        h+='<div style="flex:1">'+dn(m)+'</div>';
         h+=ob(m.office);
         h+='</div>';
       });
@@ -4442,7 +4447,7 @@ function rMentor(){
     h+='<div style="font-size:11px;color:var(--t3);margin-bottom:8px">A dated record about a personal mentor or any brother. Visible only to you and the entry\'s author.</div>';
     h+='<div style="display:flex;gap:8px">';
     h+='<select id="lm-note-sel" style="flex:1"><option value="">— Select a brother —</option>';
-    MEMBERS.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(m){ h+='<option value="'+m.id+'">'+esc(m.name||'')+'</option>'; });
+    MEMBERS.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(m){ h+='<option value="'+m.id+'">'+esc(dn(m))+'</option>'; });
     h+='</select>';
     h+='<button class="btn btn-navy btn-sm" onclick="var s=document.getElementById(\'lm-note-sel\');if(s&&s.value){openNotes(s.value,s.options[s.selectedIndex].text);}else alert(\'Select a brother first.\');">Open log</button>';
     h+='</div></div>';
@@ -4460,7 +4465,7 @@ function rMentor(){
       h+='<div class="card" style="margin-bottom:8px">';
       h+='<div class="srow" style="margin-bottom:8px">';
       h+='<div style="flex:1">';
-      h+='<div style="font-weight:700;font-size:14px;color:var(--navy)">'+(menteeM?menteeM.name:'?')+'</div>';
+      h+='<div style="font-weight:700;font-size:14px;color:var(--navy)">'+(menteeM?dn(menteeM):'?')+'</div>';
       h+='<div style="font-size:11px;color:var(--t3);margin-top:2px">';
       h+='Personal mentor: <strong>'+(pmM?gn(pmM):'Unassigned')+'</strong>';
       h+=' &middot; '+totalSess+' session'+(totalSess!==1?'s':'');
@@ -4482,7 +4487,7 @@ function rMentor(){
         h+='<div class="fg"><label class="lbl">Personal mentor</label>';
         h+='<select id="pm-sel-'+pair.id+'">';
         mmMembers.forEach(function(m){
-          h+='<option value="'+m.id+'"'+(pair.personalMentor===m.id?' selected':'')+'>'+m.name+'</option>';
+          h+='<option value="'+m.id+'"'+(pair.personalMentor===m.id?' selected':'')+'>'+dn(m)+'</option>';
         });
         h+='</select></div>';
 
@@ -4534,7 +4539,7 @@ function rMentor(){
         h+='<div style="display:flex;gap:8px;margin-top:8px">';
         h+='<button class="btn btn-navy btn-sm" data-id="'+pair.id+'" onclick="saveLodgeMentorData(this.dataset.id)"><svg class="ico" width="14" height="14"><use href="#ico-device-floppy"/></svg> Save</button>';
         h+='<button class="btn btn-n btn-sm" style="margin-left:6px" data-mid="'+pair.mentee+'" onclick="menteeReport(this.dataset.mid)">&#128196; Report</button>';
-        h+='<button class="btn btn-n btn-sm" data-sid="'+pair.mentee+'" data-nm="'+esc(menteeM?menteeM.name:'Mentee')+'" onclick="openNotes(this.dataset.sid,this.dataset.nm)">Notes</button>';
+        h+='<button class="btn btn-n btn-sm" data-sid="'+pair.mentee+'" data-nm="'+esc(menteeM?dn(menteeM):'Mentee')+'" onclick="openNotes(this.dataset.sid,this.dataset.nm)">Notes</button>';
         h+='<button class="btn btn-sm" style="background:var(--badbg);color:var(--bad);border:1px solid var(--bad)" data-id="'+pair.id+'" onclick="removeMentoringPair(this.dataset.id)"><svg class="ico" width="14" height="14"><use href="#ico-trash"/></svg></button>';
         h+='</div>';
       }
@@ -4546,7 +4551,7 @@ function rMentor(){
       h+='<div class="card" style="border-top:4px solid var(--bad);margin-bottom:10px">';
       h+='<div style="font-weight:700;font-size:13px;color:var(--bad);margin-bottom:8px">&#9888; Brothers without a personal mentor</div>';
       unmentored.forEach(function(m){
-        h+='<div style="font-size:13px;color:var(--navy);padding:3px 0">'+m.name+' ('+m.deg+')</div>';
+        h+='<div style="font-size:13px;color:var(--navy);padding:3px 0">'+dn(m)+' ('+m.deg+')</div>';
       });
       h+='</div>';
     }
@@ -4571,14 +4576,14 @@ function rMentor(){
     h+='<option value="">— Select brother —</option>';
     unassignedOrAll.forEach(function(m){
       var hasP=MENTORING_PAIRS.find(function(p){return p.mentee===m.id;});
-      h+='<option value="'+m.id+'">'+m.name+' ('+m.deg+')'+(hasP?' — already paired':'')+'</option>';
+      h+='<option value="'+m.id+'">'+dn(m)+' ('+m.deg+')'+(hasP?' — already paired':'')+'</option>';
     });
     h+='</select></div>';
     h+='<div class="fg"><label class="lbl">Personal mentor (any MM brother)</label><select id="np-mentor">';
     h+='<option value="">— Select mentor —</option>';
     mmMembers.forEach(function(m){
       var count=MENTORING_PAIRS.filter(function(p){return p.personalMentor===m.id;}).length;
-      h+='<option value="'+m.id+'">'+m.name+(count?' ('+count+' mentee'+(count!==1?'s':'')+')':'')+'</option>';
+      h+='<option value="'+m.id+'">'+dn(m)+(count?' ('+count+' mentee'+(count!==1?'s':'')+')':'')+'</option>';
     });
     h+='</select></div>';
     h+='<button class="btn btn-navy btn-sm" onclick="addMentoringPair()"><svg class="ico" width="14" height="14"><use href="#ico-plus"/></svg> Assign pair</button>';
@@ -4592,7 +4597,7 @@ function rMentor(){
       var ms=pair.milestones||{};
       h+='<div class="card" style="margin-bottom:8px">';
       h+='<div class="srow"><div style="flex:1">';
-      h+='<div style="font-weight:700;font-size:14px;color:var(--navy)">'+(menteeM?menteeM.name:'?')+'</div>';
+      h+='<div style="font-weight:700;font-size:14px;color:var(--navy)">'+(menteeM?dn(menteeM):'?')+'</div>';
       h+='<div style="font-size:11px;color:var(--t3)">Personal mentor: '+(pmM?gn(pmM):'—')+'</div>';
       h+='</div>';
       h+='<div style="font-size:11px;text-align:right;color:var(--t3)">';
@@ -5041,7 +5046,7 @@ function rMembersAdmin(){
       var derivedRole=officeToRole(m.office);
       h+='<div class="reg-row" data-search="'+((m.name+' '+m.email+' '+(m.office||'')+' '+m.deg).toLowerCase().replace(/"/g,''))+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;'+(i?'border-top:1px solid var(--bdr)':'')+'">';
       h+='<div style="flex:1">';
-      h+='<div style="font-weight:600;font-size:14px;color:var(--navy)">'+m.name+'</div>';
+      h+='<div style="font-weight:600;font-size:14px;color:var(--navy)">'+dn(m)+'</div>';
       h+='<div style="font-size:11px;color:var(--t3)">'+m.email+' &middot; '+m.deg+(m.office?' &middot; '+m.office:'')+'</div>';
       h+='</div>';
       // payment status hidden — treasurer only
@@ -5525,7 +5530,7 @@ function rMemberDetail(){
   h+='<div class="card">';
 
   // Name & role badges (live preview via JS on degree auto-detect)
-  h+='<div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:6px">'+m.name+'</div>';
+  h+='<div style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:6px">'+dn(m)+'</div>';
   h+=db(m.deg)+'&nbsp;'+ob(m.office);
 
   if(canEdit){
@@ -9288,22 +9293,22 @@ var EVENT_GUESTS={};   // eventId → [ {id,eventId,addedBy,name,phone,broughtBy
 var VISITOR_RANKS=['Entered Apprentice','Fellow Craft','Master Mason','Installed Master (WM)','Past Master','Provincial/District Grand Officer','Grand Officer','Other'];
 var _attTmp={};        // eid → {mid:bool} — holds manual attendance ticks across re-renders
 function _attTick(eid,mid,on){ if(!_attTmp[eid])_attTmp[eid]={}; _attTmp[eid][mid]=on; }
-function _rankNeedsTitle(r){ return r==='Provincial/District Grand Officer'||r==='Grand Officer'||r==='Other'; }
+function _rankNeedsTitle(r){ return r==='Provincial/District Grand Officer'||r==='Grand Officer'; }
 function eventGuests(eid){ return (EVENT_GUESTS[eid]||[]).slice(); }
 function eventAllowsNonMason(e){ return !!(e&&e.type==='rehearsal'); }   // non-masons only at rehearsals
-function _mapEventGuest(g){ return {id:g.id,eventId:g.event_id,addedBy:g.added_by,name:g.name||'',phone:g.phone||'',broughtBy:g.brought_by||null,isMason:g.is_mason!==false,lodgeName:g.lodge_name||'',lodgeNumber:g.lodge_number||'',rank:g.rank||'',rankTitle:g.rank_title||''}; }
+function _mapEventGuest(g){ return {id:g.id,eventId:g.event_id,addedBy:g.added_by,name:g.name||'',phone:g.phone||'',broughtBy:g.brought_by||null,isMason:g.is_mason!==false,lodgeName:g.lodge_name||'',lodgeNumber:g.lodge_number||'',rank:g.rank||'',rankTitle:g.rank_title||'',customPrefix:g.custom_prefix||''}; }
 function _loadEventGuests(d){ EVENT_GUESTS={}; (d||[]).forEach(function(g){ var o=_mapEventGuest(g); if(!EVENT_GUESTS[o.eventId])EVENT_GUESTS[o.eventId]=[]; EVENT_GUESTS[o.eventId].push(o); }); }
 
 function addOrUpdateEventGuest(eid, rec, existingId){
   var body={event_id:eid, added_by:CU.id, name:rec.name, phone:rec.phone||null, brought_by:rec.broughtBy||null,
     is_mason:rec.isMason, lodge_name:rec.lodgeName||null, lodge_number:rec.lodgeNumber||null,
-    rank:rec.rank||null, rank_title:rec.rankTitle||null};
+    rank:rec.rank||null, rank_title:rec.rankTitle||null, custom_prefix:rec.customPrefix||null};
   if(existingId){
     var arr=EVENT_GUESTS[eid]||[]; var it=arr.find(function(x){return x.id===existingId;});
-    if(it){ it.name=rec.name; it.phone=rec.phone; it.broughtBy=rec.broughtBy; it.isMason=rec.isMason; it.lodgeName=rec.lodgeName; it.lodgeNumber=rec.lodgeNumber; it.rank=rec.rank; it.rankTitle=rec.rankTitle; }
+    if(it){ it.name=rec.name; it.phone=rec.phone; it.broughtBy=rec.broughtBy; it.isMason=rec.isMason; it.lodgeName=rec.lodgeName; it.lodgeNumber=rec.lodgeNumber; it.rank=rec.rank; it.rankTitle=rec.rankTitle; it.customPrefix=rec.customPrefix; }
     supa('event_guests?id=eq.'+encodeURIComponent(existingId),{method:'PATCH',body:JSON.stringify(body)}).catch(function(e){console.warn('Visitor save failed',e);});
   } else {
-    var tmp={id:'eg'+Date.now(),eventId:eid,addedBy:CU.id,name:rec.name,phone:rec.phone,broughtBy:rec.broughtBy,isMason:rec.isMason,lodgeName:rec.lodgeName,lodgeNumber:rec.lodgeNumber,rank:rec.rank,rankTitle:rec.rankTitle};
+    var tmp={id:'eg'+Date.now(),eventId:eid,addedBy:CU.id,name:rec.name,phone:rec.phone,broughtBy:rec.broughtBy,isMason:rec.isMason,lodgeName:rec.lodgeName,lodgeNumber:rec.lodgeNumber,rank:rec.rank,rankTitle:rec.rankTitle,customPrefix:rec.customPrefix};
     if(!EVENT_GUESTS[eid])EVENT_GUESTS[eid]=[]; EVENT_GUESTS[eid].push(tmp);
     supa('event_guests',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(body)})
       .then(function(r){return r.json();}).then(function(dd){if(dd&&dd[0])tmp.id=dd[0].id;}).catch(function(e){console.warn('Visitor save failed',e);});
@@ -9313,8 +9318,8 @@ function removeEventGuest(eid,id){
   EVENT_GUESTS[eid]=(EVENT_GUESTS[eid]||[]).filter(function(x){return x.id!==id;});
   supa('event_guests?id=eq.'+encodeURIComponent(id),{method:'DELETE'}).catch(function(e){console.warn('Visitor delete failed',e);});
 }
-function _visToggleMason(ctx,eid){ var w=document.getElementById('vf-'+ctx+'-'+eid+'-masonwrap'); var c=document.getElementById('vf-'+ctx+'-'+eid+'-mason'); if(w)w.style.display=(c&&c.checked)?'block':'none'; }
-function _visToggleTitle(ctx,eid){ var s=document.getElementById('vf-'+ctx+'-'+eid+'-rank'); var t=document.getElementById('vf-'+ctx+'-'+eid+'-title'); if(t)t.style.display=(s&&_rankNeedsTitle(s.value))?'block':'none'; }
+function _visToggleMason(ctx,eid){ var pfx='vf-'+ctx+'-'+eid+'-'; var c=document.getElementById(pfx+'mason'); var w=document.getElementById(pfx+'masonwrap'); var masonOn=c?c.checked:true; if(w)w.style.display=masonOn?'block':'none'; if(!masonOn){ var cp0=document.getElementById(pfx+'customprefix'); if(cp0&&!cp0.value)cp0.value='Mr.'; } _visToggleTitle(ctx,eid); }
+function _visToggleTitle(ctx,eid){ var pfx='vf-'+ctx+'-'+eid+'-'; var c=document.getElementById(pfx+'mason'); var masonOn=c?c.checked:true; var s=document.getElementById(pfx+'rank'); var rankVal=s?s.value:''; var t=document.getElementById(pfx+'title'); if(t)t.style.display=(masonOn&&_rankNeedsTitle(rankVal))?'block':'none'; var cp=document.getElementById(pfx+'customprefix'); if(cp){ var isOther=masonOn&&_rankIsOther(rankVal); cp.style.display=((!masonOn)||isOther)?'block':'none'; } }
 
 function renderVisitorForm(e, ctx){
   var allowNon=eventAllowsNonMason(e);
@@ -9330,7 +9335,7 @@ function renderVisitorForm(e, ctx){
   h+='<input id="'+pfx+'phone" placeholder="Phone" inputmode="tel" value="'+esc(pre('phone'))+'" style="width:100%;margin-bottom:6px">';
   if(ctx==='sec'){
     h+='<select id="'+pfx+'broughtby" style="width:100%;margin-bottom:6px"><option value="">Brought by… (optional)</option>';
-    MEMBERS.forEach(function(m){ h+='<option value="'+m.id+'"'+(pre('broughtBy')===m.id?' selected':'')+'>'+gn(m)+'</option>'; });
+    MEMBERS.forEach(function(m){ h+='<option value="'+m.id+'"'+(pre('broughtBy')===m.id?' selected':'')+'>'+dn(m)+'</option>'; });
     h+='</select>';
   }
   if(allowNon){
@@ -9345,6 +9350,9 @@ function renderVisitorForm(e, ctx){
   var showTitle=_rankNeedsTitle(pre('rank'));
   h+='<input id="'+pfx+'title" placeholder="Exact title / office (e.g. Past Prov. Grand Warden)" value="'+esc(pre('rankTitle'))+'" style="width:100%;margin-bottom:6px;display:'+(showTitle?'block':'none')+'">';
   h+='</div>';
+  var _showCp=(!isMasonInit)||_rankIsOther(pre('rank'));
+  var _cpVal=ed?(ed.customPrefix||''):(isMasonInit?'':'Mr.');
+  h+='<input id="'+pfx+'customprefix" placeholder="Prefix (e.g. Mr., Mrs., Ill. Bro.)" value="'+esc(_cpVal)+'" style="width:100%;margin-bottom:6px;display:'+(_showCp?'block':'none')+'">';
   h+='<div style="display:flex;gap:6px">';
   h+='<button class="btn btn-navy btn-sm" style="flex:1;justify-content:center" data-eid="'+e.id+'" onclick="submitVisitor(\''+ctx+'\',this.dataset.eid)">'+(ed?'Save changes':'Add visitor')+'</button>';
   if(ed)h+='<button class="btn btn-n btn-sm" onclick="window._visEditId=null;'+(ctx==='sec'?'rReports()':'rHome()')+'">Cancel</button>';
@@ -9359,11 +9367,14 @@ function submitVisitor(ctx,eid){
   var allowNon=eventAllowsNonMason(e);
   var masonChk=document.getElementById(pfx+'mason');
   var isMason = allowNon ? (masonChk?masonChk.checked:true) : true;
-  var rec={name:name, phone:g('phone'), isMason:isMason, broughtBy:(ctx==='sec'?(g('broughtby')||null):CU.id), lodgeName:'', lodgeNumber:'', rank:'', rankTitle:''};
+  var rec={name:name, phone:g('phone'), isMason:isMason, broughtBy:(ctx==='sec'?(g('broughtby')||null):CU.id), lodgeName:'', lodgeNumber:'', rank:'', rankTitle:'', customPrefix:''};
   if(isMason){
     rec.lodgeName=g('lodge'); rec.lodgeNumber=g('lodgeno'); rec.rank=g('rank'); rec.rankTitle=_rankNeedsTitle(g('rank'))?g('title'):'';
+    rec.customPrefix=_rankIsOther(g('rank'))?g('customprefix'):'';
     if(!rec.lodgeName||!rec.lodgeNumber||!rec.rank){ alert('For a mason visitor, enter lodge name, lodge number and rank.'); return; }
     if(_rankNeedsTitle(rec.rank)&&!rec.rankTitle){ alert('Enter the exact title for that rank.'); return; }
+  } else {
+    rec.customPrefix=g('customprefix');
   }
   var editId=(window._visEditId&&window._visEditId.eid===eid&&window._visEditId.ctx===ctx)?window._visEditId.id:null;
   addOrUpdateEventGuest(eid, rec, editId);
@@ -9381,7 +9392,7 @@ function renderVisitorList(e, ctx, mineOnly){
     var canEdit=!locked && (ctx==='sec' || g.addedBy===CU.id);
     h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--bg2)">';
     h+='<div style="flex:1;min-width:0">';
-    h+='<div style="font-size:13px;color:var(--navy);font-weight:600">'+esc(g.name)+(g.phone?' <span style="font-weight:400;color:var(--t3);font-size:11px">'+esc(g.phone)+'</span>':'')+'</div>';
+    h+='<div style="font-size:13px;color:var(--navy);font-weight:600">'+esc(_guestName(g))+(g.phone?' <span style="font-weight:400;color:var(--t3);font-size:11px">'+esc(g.phone)+'</span>':'')+'</div>';
     var det=_visRankLabel(g);
     if(g.isMason&&g.lodgeName)det+=' &middot; '+esc(g.lodgeName)+(g.lodgeNumber?' № '+esc(g.lodgeNumber):'');
     h+='<div style="font-size:11px;color:var(--t3)">'+det+'</div>';
@@ -9558,7 +9569,7 @@ function treasurerAllReport(){
     if(y>275){doc.addPage();y=20;}
     var last=SUB_PAYMENTS.filter(function(p){return p.memberId===m.id;})
       .sort(function(a,b){return (b.date||'').localeCompare(a.date||'');})[0];
-    doc.setTextColor(30,30,30); doc.text((m.name||'').substring(0,55), 14, y);
+    doc.setTextColor(30,30,30); doc.text(dn(m).substring(0,55), 14, y);
     var sc=m.sub==='Paid'?[45,122,63]:m.sub==='Arrears'?[192,57,43]:[26,111,168];
     doc.setTextColor(sc[0],sc[1],sc[2]); doc.text(m.sub||'—', 120, y);
     doc.setTextColor(120,120,120); doc.text(last?(last.date||'—'):'—', 150, y);
@@ -9573,7 +9584,7 @@ function treasurerMemberReport(mid){
   var doc=_pdfDoc('Subscription Standing — '+m.name);
   var y=48;
   doc.setFontSize(10); doc.setTextColor(30,30,30);
-  doc.text('Member: '+m.name, 14, y); y+=7;
+  doc.text('Member: '+dn(m), 14, y); y+=7;
   doc.text('Current status: '+(m.sub||'—'), 14, y); y+=7;
   if(m.ugle)doc.text('UGLE No: '+m.ugle, 14, y), y+=7;
   y+=4;
@@ -9622,7 +9633,7 @@ function secretaryAttendanceReport(){
     if(y>275){doc.addPage();y=20;}
     var att=closed.filter(function(e){return ATTENDANCE_DATA[e.id]&&ATTENDANCE_DATA[e.id][m.id];}).length;
     var rate=closed.length?Math.round(att/closed.length*100):0;
-    doc.setTextColor(30,30,30); doc.text((m.name||'').substring(0,60), 14, y);
+    doc.setTextColor(30,30,30); doc.text(dn(m).substring(0,60), 14, y);
     doc.text(att+' / '+closed.length, 130, y);
     var rc=rate>=50?[45,122,63]:[176,122,0];
     doc.setTextColor(rc[0],rc[1],rc[2]); doc.text(rate+'%', 170, y);
@@ -9643,7 +9654,7 @@ function secretaryAttendanceReport(){
     var _vg=eventGuests(e.id);
     var _vm=_vg.filter(function(g){return g.isMason;}).length;
     doc.text('Present: '+present.length+' members'+(_vg.length?(' + '+_vg.length+' visitors ('+_vm+' masons, '+(_vg.length-_vm)+' guests)'):''), 14, y); y+=5;
-    var names=present.map(function(m){return m.name;}).join(', ')||'None recorded';
+    var names=present.map(function(m){return dn(m);}).join(', ')||'None recorded';
     var lines=doc.splitTextToSize('Members: '+names, 180);
     doc.setTextColor(110,110,110); doc.text(lines, 14, y); y+=lines.length*4+4;
     if(_vg.length){
@@ -9652,10 +9663,10 @@ function secretaryAttendanceReport(){
       doc.setTextColor(110,110,110);
       _vg.forEach(function(g){
         if(y>278){doc.addPage();y=20;}
-        var line=g.name;
+        var line=_guestName(g);
         if(g.isMason){ line+=' — '+(g.rankTitle||g.rank||'Mason'); if(g.lodgeName)line+=', '+g.lodgeName+(g.lodgeNumber?' No. '+g.lodgeNumber:''); }
         else { line+=' — Guest (non-mason)'; }
-        if(g.broughtBy){ var bm=MEMBERS.find(function(m){return m.id===g.broughtBy;}); if(bm)line+=' (by '+bm.name+')'; }
+        if(g.broughtBy){ var bm=MEMBERS.find(function(m){return m.id===g.broughtBy;}); if(bm)line+=' (by '+dn(bm)+')'; }
         var vl=doc.splitTextToSize('• '+line, 176);
         doc.text(vl, 18, y); y+=vl.length*4;
       });
@@ -10087,7 +10098,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-19 16:56:00');
+console.log('Portal build 2026-11-20 09:15:00');
 
 function toggleSharePractice(){
   if(!CU)return;
@@ -10166,7 +10177,7 @@ function _mentorProgressRows(mid, cb){
 function _renderBrotherSection(doc, y, m, prog){
   var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   doc.setFontSize(12); doc.setTextColor(14,31,69);
-  doc.text(m?m.name:'Member', 14, y); y+=6;
+  doc.text(m?dn(m):'Member', 14, y); y+=6;
   doc.setFontSize(9); doc.setTextColor(90,90,90);
   doc.text('Degree: '+((m&&m.deg)||'—')+'   Initiated: '+((m&&m.init)||'—')+'   Passed: '+((m&&m.pass_)||'—')+'   Raised: '+((m&&m.raise)||'—'), 14, y); y+=7;
   // Practice progress
