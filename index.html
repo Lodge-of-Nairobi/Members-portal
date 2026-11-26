@@ -2118,12 +2118,13 @@ var MEMBERS=[];
 var RLBL={master:'W. Master',secretary:'Secretary',dc:'D.C.',mentor:'Mentor',almoner:'Almoner',treasurer:'Treasurer',brother:'Brother',steward:'Ch. Steward'};
 
 var NAV_ROLES={
-  master:    ['home','members','duties','library','practice','mentor','almoner','agenda','reports','summons','polls','calendar','notices'],
-  secretary: ['home','members','duties','library','agenda','reports','summons','polls','practice','calendar','notices'],
-  dc:        ['home','members','duties','library','practice','reports','summons','polls','calendar','notices'],
-  mentor:    ['home','members','library','practice','mentor','summons','polls','calendar','notices'],
-  almoner:   ['home','almoner','library','reports','summons','polls','practice','calendar','notices'],
-  treasurer: ['home','members','library','reports','summons','polls','practice','calendar','notices'],
+  // Officer general polls hidden for now (re-enable by adding 'polls' back to these rows).
+  master:    ['home','members','duties','library','practice','mentor','almoner','agenda','reports','summons','calendar','notices'],
+  secretary: ['home','members','duties','library','agenda','reports','summons','practice','calendar','notices'],
+  dc:        ['home','members','duties','library','practice','reports','summons','calendar','notices'],
+  mentor:    ['home','members','library','practice','mentor','summons','calendar','notices'],
+  almoner:   ['home','almoner','library','reports','summons','practice','calendar','notices'],
+  treasurer: ['home','members','library','reports','summons','practice','calendar','notices'],
   steward:   ['home','polls','library','summons','practice','calendar','notices'],
   brother:   ['home','duties','library','practice','summons','calendar','notices']
 };
@@ -3153,6 +3154,26 @@ function rPolls(){
               }
               h2+='</div>';
             }
+          }
+          h2+='<div style="margin-top:6px;display:flex;justify-content:flex-end">';
+          h2+='<button class="btn btn-n btn-sm" style="padding:2px 10px;font-size:11px" data-key="'+spKey+'" onclick="toggleStewardAmend(this.dataset.key)">'+(stewardAmendOpen===spKey?'Close':'Amend')+'</button>';
+          h2+='</div>';
+          if(stewardAmendOpen===spKey){
+            var _af1=(Array.isArray(poll.fields)?poll.fields:[]).find(function(x){return x.id==='f1';})||{};
+            var _av=myV?myV.f1:undefined;
+            h2+='<div style="margin-top:6px;padding:8px;background:var(--bg2);border-radius:8px">';
+            h2+='<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Amend response for '+gn(m)+'</div>';
+            h2+='<div style="display:flex;gap:6px;margin-bottom:6px">';
+            h2+='<button class="btn btn-sm" style="flex:1;justify-content:center'+(_av===true?';background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" data-pid="'+poll.id+'" data-mid="'+m.id+'" onclick="csAmendF1(this.dataset.pid,this.dataset.mid,true)">'+(_af1.yesLabel||'Yes')+'</button>';
+            h2+='<button class="btn btn-sm" style="flex:1;justify-content:center'+(_av===false?';background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" data-pid="'+poll.id+'" data-mid="'+m.id+'" onclick="csAmendF1(this.dataset.pid,this.dataset.mid,false)">'+(_af1.noLabel||'No')+'</button>';
+            h2+='</div>';
+            if(isMealPoll(poll)&&_av===true){
+              h2+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">';
+              pollMealOptions(poll).forEach(function(opt){ h2+='<button class="btn btn-sm" style="'+(myV&&myV.f2===opt?'background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" data-pid="'+poll.id+'" data-mid="'+m.id+'" data-opt="'+esc(opt)+'" onclick="csAmendF2(this.dataset.pid,this.dataset.mid,this.dataset.opt)">'+esc(opt)+'</button>'; });
+              h2+='</div>';
+            }
+            h2+='<button class="btn btn-navy btn-sm" style="width:100%;justify-content:center" data-pid="'+poll.id+'" data-mid="'+m.id+'" onclick="csSaveAmend(this.dataset.pid,this.dataset.mid)">Save amendment</button>';
+            h2+='</div>';
           }
           h2+='</div>';
         });
@@ -6026,6 +6047,20 @@ var RSVP={};
 
 
 var stewardPayOpen=null;
+var stewardAmendOpen=null;
+function toggleStewardAmend(key){ stewardAmendOpen=(stewardAmendOpen===key?null:key); rPolls(); }
+function csAmendF1(pid,mid,yes){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f1=yes; rPolls(); }
+function csAmendF2(pid,mid,opt){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f2=opt; rPolls(); }
+function csSaveAmend(pid,mid){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; var v=p.votes[mid]||{}; if(v.f1===undefined){alert('Choose dining / not dining first.');return;} v._submitted=true; v._amendedBy=CU.id; v._submittedAt=new Date().toISOString(); supaUpsertVoteFor(pid,mid,v); stewardAmendOpen=null; rPolls(); }
+function supaUpsertVoteFor(pollId,memberId,answers){
+  supa('poll_votes',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},
+    body:JSON.stringify({poll_id:pollId,member_id:memberId,answers:answers,updated_at:new Date().toISOString()})
+  }).then(function(r){
+    if(!r.ok){ r.text().then(function(t){alert('Amendment save failed: '+t);});
+      return supa('poll_votes?poll_id=eq.'+pollId+'&member_id=eq.'+memberId,{method:'PATCH',body:JSON.stringify({answers:answers,updated_at:new Date().toISOString()})});
+    }
+  }).catch(function(e){alert('Amendment save failed: '+e.message);});
+}
 function toggleStewardPay(key){stewardPayOpen=(stewardPayOpen===key?null:key);rPolls();}
 
 function recordMealPayment(memberId, pollId){
@@ -10329,7 +10364,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 16:35:00');
+console.log('Portal build 2026-11-26 16:55:00');
 
 function toggleSharePractice(){
   if(!CU)return;
