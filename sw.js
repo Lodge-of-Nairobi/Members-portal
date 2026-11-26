@@ -3,7 +3,7 @@
 // serving a stale page when online. HTML is network-first so updates land on
 // the next online load; static assets are cache-first; Supabase (cross-origin)
 // is never intercepted.
-const CACHE = 'lon-portal-v1';
+const CACHE = 'lon-portal-v2';
 const SHELL = [
   './', './index.html', './register.html',
   './logo.png', './icon-192.png', './icon-512.png',
