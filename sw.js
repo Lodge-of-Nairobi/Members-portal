@@ -3,11 +3,12 @@
 // serving a stale page when online. HTML is network-first so updates land on
 // the next online load; static assets are cache-first; Supabase (cross-origin)
 // is never intercepted.
-const CACHE = 'lon-portal-v2';
+const CACHE = 'lon-portal-v3';
 const SHELL = [
   './', './index.html', './register.html',
   './logo.png', './icon-192.png', './icon-512.png',
-  './apple-touch-icon.png', './manifest.json'
+  './apple-touch-icon.png', './manifest.json',
+  './icon-192-maskable.png', './icon-512-maskable.png'
 ];
 
 self.addEventListener('install', function(e){
