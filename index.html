@@ -3263,6 +3263,9 @@ function showCreatePoll(){
 // the background refresh must not re-render over them.
 function _paneInputFocused(paneId){ var a=document.activeElement; if(!a)return false; var t=a.tagName; if(t!=='INPUT'&&t!=='TEXTAREA'&&t!=='SELECT')return false; var pane=document.getElementById(paneId); return pane?pane.contains(a):false; }
 function _pollBusy(){ if(pollForm)return true; var f=document.getElementById('new-poll-form'); if(f&&f.style.display!=='none')return true; return _paneInputFocused('pane-polls'); }
+// True when a brother has a poll response open (radio/choice selections live in
+// the DOM, so a background re-render would wipe them mid-answer).
+function _voterBusy(){ return !!window._pollExpanded; }
 
 function togglePollFieldOptions(type){
   var wrap=document.getElementById('pf-options-wrap');
@@ -7523,6 +7526,9 @@ function _rtTick(){
     NOTICES = d.map(function(n){
       return {id:n.id, type:n.type||'info', title:n.title||'Notice', body:n.body||'',
               to:n.to_all?['all']:(n.to_ids||[]),
+              degree:n.to_degree||null, pinned:n.pinned===true,
+              archived:n.archived===true, expiresAt:n.expires_at||null,
+              ts:n.created_at||new Date().toISOString(),
               date:(n.created_at||new Date().toISOString()).split('T')[0]};
     });
     // Always ensure active polls have a notice entry
@@ -7539,8 +7545,8 @@ function _rtTick(){
       }
     });
     buildNav();
-    if(pane==='notices' && !_paneInputFocused('pane-notices')) rNotices();
-    if(pane==='home') rHome();
+    if(pane==='notices' && !_paneInputFocused('pane-notices') && !_voterBusy()) rNotices();
+    if(pane==='home' && !_voterBusy()) rHome();
   });
 
   // Refresh polls (match the main loader's mapping so fees / showNames survive)
@@ -7558,8 +7564,8 @@ function _rtTick(){
     });
     // Don't re-render over a steward mid-create or anyone typing in these panes.
     if(pane==='polls' && !_pollBusy()) rPolls();
-    if(pane==='home') rHome();
-    if(pane==='notices' && !_paneInputFocused('pane-notices')) rNotices();
+    if(pane==='home' && !_voterBusy()) rHome();
+    if(pane==='notices' && !_paneInputFocused('pane-notices') && !_voterBusy()) rNotices();
   });
 
   // Refresh RSVP data
@@ -7600,7 +7606,7 @@ function _rtTick(){
                 status:a.status, dby:a.delivered_by};
       });
       if(pane==='duties') rDuties();
-      if(pane==='home') rHome();
+      if(pane==='home' && !_voterBusy()) rHome();
     });
   }
 }
@@ -10202,7 +10208,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 14:25:00');
+console.log('Portal build 2026-11-26 14:45:00');
 
 function toggleSharePractice(){
   if(!CU)return;
