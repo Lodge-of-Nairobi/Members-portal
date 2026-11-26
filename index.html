@@ -4315,9 +4315,10 @@ function rReports(){
 
 var NOTICES=[];
 var noticeCounter=100;
-function pushNotice(type,title,body,toIds){
-  NOTICES.unshift({id:'n'+(++noticeCounter),type:type,title:title,body:body,to:toIds,date:new Date().toISOString().split('T')[0],read:false});
-}
+// NOTE: the real pushNotice() lives earlier in this file and persists the
+// notice to the Supabase `notices` table. A duplicate local-only copy used
+// to shadow it here, which meant notices never saved or reached other
+// members — removed so the database-backed version is the one that runs.
 
 function rNotices(){
   if(!CU)return;
@@ -10105,7 +10106,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 13:25:00');
+console.log('Portal build 2026-11-26 13:40:00');
 
 function toggleSharePractice(){
   if(!CU)return;
