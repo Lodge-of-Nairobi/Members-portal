@@ -1865,6 +1865,8 @@ function loadAppData() {
         return {id:p.id, type:p.type, label:p.label, dayLabel:p.day_label,
                 date:p.date, active:p.active===true||p.active==='true',
                 fields:fields, votes:votes, showNames:false,
+                toAll:p.to_all!==false, degree:p.to_degree||null, offices:p.to_offices||[],
+                toIds:p.to_ids||[], isMeal:(p.is_meal==null?null:p.is_meal===true), createdBy:p.created_by||null,
                 memberFee:(p.member_fee!=null?p.member_fee:null), guestFee:(p.guest_fee!=null?p.guest_fee:null)};
       });
     }),
@@ -2116,12 +2118,12 @@ var MEMBERS=[];
 var RLBL={master:'W. Master',secretary:'Secretary',dc:'D.C.',mentor:'Mentor',almoner:'Almoner',treasurer:'Treasurer',brother:'Brother',steward:'Ch. Steward'};
 
 var NAV_ROLES={
-  master:    ['home','members','duties','library','practice','mentor','almoner','agenda','reports','summons','calendar','notices'],
-  secretary: ['home','members','duties','library','agenda','reports','summons','practice','calendar','notices'],
-  dc:        ['home','members','duties','library','practice','reports','summons','calendar','notices'],
-  mentor:    ['home','members','library','practice','mentor','summons','calendar','notices'],
-  almoner:   ['home','almoner','library','reports','summons','practice','calendar','notices'],
-  treasurer: ['home','members','library','reports','summons','practice','calendar','notices'],
+  master:    ['home','members','duties','library','practice','mentor','almoner','agenda','reports','summons','polls','calendar','notices'],
+  secretary: ['home','members','duties','library','agenda','reports','summons','polls','practice','calendar','notices'],
+  dc:        ['home','members','duties','library','practice','reports','summons','polls','calendar','notices'],
+  mentor:    ['home','members','library','practice','mentor','summons','polls','calendar','notices'],
+  almoner:   ['home','almoner','library','reports','summons','polls','practice','calendar','notices'],
+  treasurer: ['home','members','library','reports','summons','polls','practice','calendar','notices'],
   steward:   ['home','polls','library','summons','practice','calendar','notices'],
   brother:   ['home','duties','library','practice','summons','calendar','notices']
 };
@@ -2946,6 +2948,59 @@ function saveSubStatus(mid){
   }).catch(function(e){console.warn('Sub status save failed:',e);});
   treasOpen=null;rMembers();
 }
+function renderAudiencePicker(px){
+  var h='<label class="lbl" style="display:block;margin-bottom:4px">Share with</label>';
+  h+='<select id="'+px+'-aud" onchange="_audToggle(\''+px+'\')" style="width:100%;margin-bottom:8px"><option value="all">All brethren</option><option value="degree">By degree</option><option value="office">By office</option><option value="specific">Specific brethren</option></select>';
+  h+='<div id="'+px+'-degwrap" style="display:none;margin-bottom:8px"><select id="'+px+'-deg" style="width:100%"><option value="EA">First Degree and above</option><option value="FC">Second Degree and above</option><option value="MM" selected>Master Masons only</option></select></div>';
+  var offs=[]; MEMBERS.forEach(function(m){ if(m.office&&offs.indexOf(m.office)<0)offs.push(m.office); }); offs.sort();
+  h+='<div id="'+px+'-offwrap" style="display:none;margin-bottom:8px;max-height:150px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px">';
+  if(!offs.length)h+='<div style="font-size:12px;color:var(--t3)">No offices recorded.</div>';
+  offs.forEach(function(o){ h+='<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="'+px+'-off" value="'+esc(o)+'" style="width:16px;height:16px;flex:none">'+esc(o)+'</label>'; });
+  h+='</div>';
+  h+='<div id="'+px+'-memwrap" style="display:none;margin-bottom:8px;max-height:170px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px">';
+  MEMBERS.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(m){ h+='<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="'+px+'-mem" value="'+m.id+'" style="width:16px;height:16px;flex:none">'+esc(dn(m))+'</label>'; });
+  h+='</div>';
+  return h;
+}
+function _audToggle(px){ var v=(document.getElementById(px+'-aud')||{}).value; ['deg','off','mem'].forEach(function(k){ var w=document.getElementById(px+'-'+k+'wrap'); if(w)w.style.display='none'; }); var map={degree:'deg',office:'off',specific:'mem'}; if(map[v]){ var w=document.getElementById(px+'-'+map[v]+'wrap'); if(w)w.style.display='block'; } }
+function readAudience(px){
+  var v=(document.getElementById(px+'-aud')||{}).value||'all';
+  var a={to_all:false,to_degree:null,to_offices:[],to_ids:[]};
+  if(v==='all'){ a.to_all=true; }
+  else if(v==='degree'){ a.to_degree=(document.getElementById(px+'-deg')||{}).value||'MM'; }
+  else if(v==='office'){ a.to_offices=Array.prototype.slice.call(document.querySelectorAll('.'+px+'-off:checked')).map(function(x){return x.value;}); if(!a.to_offices.length)return null; }
+  else if(v==='specific'){ a.to_ids=Array.prototype.slice.call(document.querySelectorAll('.'+px+'-mem:checked')).map(function(x){return x.value;}); if(!a.to_ids.length)return null; }
+  return a;
+}
+function pollVisible(poll){
+  if(!CU||!poll)return false;
+  if(CU.role==='steward')return true;
+  if(poll.createdBy&&poll.createdBy===CU.id)return true;
+  if(poll.toAll)return true;
+  if(poll.degree){ var ord={EA:1,FC:2,MM:3}; return (ord[CU.deg]||0)>=(ord[poll.degree]||0); }
+  if(poll.offices&&poll.offices.length)return poll.offices.indexOf(CU.office)>-1;
+  if(poll.toIds&&poll.toIds.length)return poll.toIds.indexOf(CU.id)>-1;
+  return true;
+}
+function renderGeneralSummary(poll){
+  var votes=poll.votes||{}; var ids=Object.keys(votes);
+  if(!ids.length)return '<div style="font-size:12px;color:var(--t3);margin-bottom:8px">No responses yet.</div>';
+  var h='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+  (Array.isArray(poll.fields)?poll.fields:[]).forEach(function(f){
+    if(f.type==='yesno'){
+      var y=ids.filter(function(k){return votes[k][f.id]===true;}).length;
+      var n=ids.filter(function(k){return votes[k][f.id]===false;}).length;
+      h+='<span class="badge" style="background:var(--okbg);color:var(--ok)">'+(f.yesLabel||'Yes')+': '+y+'</span>';
+      h+='<span class="badge" style="background:var(--badbg);color:var(--bad)">'+(f.noLabel||'No')+': '+n+'</span>';
+    } else if(f.type==='choice'){
+      (f.options||[]).forEach(function(opt){
+        var c=ids.filter(function(k){return votes[k][f.id]===opt;}).length;
+        h+='<span class="badge" style="background:var(--infobg);color:var(--info)">'+esc(opt)+': '+c+'</span>';
+      });
+    }
+  });
+  h+='</div>'; return h;
+}
 function rPolls(){
   if(!CU)return;
   var isSteward=CU.role==='steward';
@@ -3107,20 +3162,44 @@ function rPolls(){
     });
 
   } else {
-    // ── Officers / Brothers: respond to polls ────────────────────────────
-    h+='</div>';
-    if(!POLLS.length){h+='<div style="text-align:center;padding:40px;color:var(--t3)">No polls open at this time.</div>';}
-    POLLS.forEach(function(poll){
-      var dlDate=new Date(poll.date);dlDate.setDate(dlDate.getDate()-2);
+    // ── Officers: create general polls + see results; brothers: respond ──
+    var _isOfficer=CU.role!=='brother';
+    h='';
+    if(_isOfficer){
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+      h+='<div style="font-size:13px;color:var(--t2)">Put a question to the brethren.</div>';
+      h+='<button class="btn btn-navy btn-sm" onclick="showCreatePoll()"><svg class="ico" width="16" height="16"><use href="#ico-plus"/></svg> New poll</button>';
+      h+='</div>';
+      h+='<div id="new-poll-form" style="display:'+(pollForm?'block':'none')+';margin-bottom:14px"><div class="card" style="border:2px solid var(--gold)">';
+      h+='<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px">New poll</div>';
+      h+='<div class="fg"><label class="lbl">Question</label><input id="poll-label" placeholder="e.g. Do you support a June social?"></div>';
+      h+='<div class="fg"><label class="lbl">Relevant date</label><input type="date" id="poll-date"></div>';
+      h+=renderAudiencePicker('pa');
+      h+='<div style="display:flex;gap:8px;margin-top:4px">';
+      h+='<button class="btn btn-navy btn-sm" style="flex:1;justify-content:center" onclick="createPoll()"><svg class="ico" width="16" height="16"><use href="#ico-plus"/></svg> Create poll</button>';
+      h+='<button class="btn btn-n btn-sm" onclick="hidePollForm()">Cancel</button>';
+      h+='</div></div></div>';
+    }
+    var _vis=POLLS.filter(pollVisible);
+    if(!_vis.length){h+='<div style="text-align:center;padding:40px;color:var(--t3)">No polls at this time.</div>';}
+    _vis.forEach(function(poll){
       var isClosed=!poll.active;
       var myV=poll.votes[CU.id]||{};
+      var _mine=poll.createdBy&&poll.createdBy===CU.id;
       h+='<div class="card" style="margin-bottom:10px'+(isClosed?';opacity:.7':'')+'"><div style="font-weight:700;font-size:15px;color:var(--navy);margin-bottom:4px">'+poll.label+'</div>';
       h+='<div style="font-size:12px;color:var(--t3);margin-bottom:4px">'+poll.dayLabel+(isClosed?' &middot; <span style="color:var(--bad)">Closed</span>':'')+'</div>';
       if(pollHasFees(poll))h+='<div style="font-size:11px;color:var(--t3);margin-bottom:10px">'+pollFeeLine(poll)+'</div>';
+      if(_isOfficer && !isMealPoll(poll))h+=renderGeneralSummary(poll);
       h+=renderPollVoter(poll,myV,isClosed);
+      if(_mine){
+        h+='<div style="display:flex;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bdr)">';
+        h+=poll.active?'<button class="btn btn-warn btn-sm" style="flex:1;justify-content:center" data-pid="'+poll.id+'" onclick="togglePollActive(this.dataset.pid)">Close poll</button>':'<button class="btn btn-ok btn-sm" style="flex:1;justify-content:center" data-pid="'+poll.id+'" onclick="togglePollActive(this.dataset.pid)">Reopen poll</button>';
+        h+='<button class="btn btn-sm" style="background:var(--badbg);color:var(--bad);border:1px solid var(--bad)" data-pid="'+poll.id+'" onclick="deletePoll(this.dataset.pid)"><svg class="ico" width="16" height="16"><use href="#ico-trash"/></svg></button>';
+        h+='</div>';
+      }
       h+='</div>';
     });
-    h='<div class="sf" style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px">Meal Polls</div>'+h;
+    h='<div class="sf" style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:16px">Polls</div>'+h;
   }
 
   // ── Steward's own vote ────────────────────────────────────────────────
@@ -3194,7 +3273,7 @@ function createPoll(){
   var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var dayLabel=days[d.getDay()]+' '+d.getDate()+' '+date.value.split('-')[1]+' '+date.value.split('-')[0];
   // Meal preference is optional — a poll may be for another purpose entirely.
-  var isMeal=(document.getElementById('poll-is-meal')||{}).checked!==false;
+  var _mc=document.getElementById('poll-is-meal'); var isMeal=!!(_mc&&_mc.checked);
   var mealOptsList=['Vegetarian','Non-vegetarian'];
   if(mealOpts&&mealOpts.value.trim()){
     mealOptsList=mealOpts.value.split(',').map(function(o){return o.trim();}).filter(Boolean);
@@ -3212,15 +3291,19 @@ function createPoll(){
   }
   // Guests are captured as a name + phone (+ meal) list in the voter, not single fields
   var mfEl=document.getElementById('poll-member-fee'), gfEl=document.getElementById('poll-guest-fee');
-  var memberFee=mfEl&&mfEl.value!==''?Math.max(0,parseInt(mfEl.value,10)||0):MEAL_COSTS.rehearsal;
-  var guestFee=gfEl&&gfEl.value!==''?Math.max(0,parseInt(gfEl.value,10)||0):MEAL_COSTS.guest_surcharge;
+  var memberFee=mfEl?(mfEl.value!==''?Math.max(0,parseInt(mfEl.value,10)||0):MEAL_COSTS.rehearsal):0;
+  var guestFee=gfEl?(gfEl.value!==''?Math.max(0,parseInt(gfEl.value,10)||0):MEAL_COSTS.guest_surcharge):0;
+  if(!_mc){ fields=[{id:'f1',type:'yesno',label:label.value.trim(),yesLabel:'Yes',noLabel:'No'}]; }
+  var _aud=readAudience('pa'); if(_aud===null){alert('Choose who to share the poll with.');return;}
   var poll={id:'poll-tmp-'+Date.now(),type:type?type.value:'rehearsal',
     label:label.value.trim(),dayLabel:dayLabel,date:date.value,
-    active:true,fields:fields,votes:{},showNames:false,memberFee:memberFee,guestFee:guestFee};
+    active:true,fields:fields,votes:{},showNames:false,memberFee:memberFee,guestFee:guestFee,
+    toAll:_aud.to_all,degree:_aud.to_degree,offices:_aud.to_offices,toIds:_aud.to_ids,isMeal:isMeal,createdBy:CU.id};
   POLLS.unshift(poll);
   supa('polls',{method:'POST',
     body:JSON.stringify({type:poll.type,label:poll.label,day_label:dayLabel,
-      date:date.value,active:true,fields:fields,created_by:CU.id,member_fee:memberFee,guest_fee:guestFee})
+      date:date.value,active:true,fields:fields,created_by:CU.id,member_fee:memberFee,guest_fee:guestFee,
+      to_all:_aud.to_all,to_degree:_aud.to_degree,to_offices:_aud.to_offices,to_ids:_aud.to_ids,is_meal:isMeal})
   }).then(function(r){return r.json();})
   .then(function(data){
     if(data&&data.code){
@@ -3229,8 +3312,10 @@ function createPoll(){
       poll.id=data[0].id;
     }
     // Send notice to all — saves directly to DB with to_all=true
+    var _nTo=_aud.to_all?['all']:(_aud.to_ids&&_aud.to_ids.length?_aud.to_ids:[]);
+    var _nOpts={}; if(_aud.to_degree)_nOpts.degree=_aud.to_degree; if(_aud.to_offices&&_aud.to_offices.length)_nOpts.offices=_aud.to_offices;
     pushNotice('poll','Poll: '+poll.label,
-      'A poll has been created for '+poll.label+'. Please respond in your Notices tab.','all');
+      'A poll has been created for '+poll.label+'. Please respond in your Notices tab.',_nTo,_nOpts);
     hidePollForm();
     alert('Poll created.');
     rPolls();
@@ -6034,7 +6119,7 @@ function _stewardRecord(pollId, mid, type, amount, method, reference, exempt){
 }
 
 // A poll collects a meal preference only if it carries the f2 choice field.
-function isMealPoll(poll){ return (((poll&&poll.fields)||[]).some(function(f){return f.id==='f2';})); }
+function isMealPoll(poll){ if(poll&&poll.isMeal!=null)return poll.isMeal===true; return (((poll&&poll.fields)||[]).some(function(f){return f.id==='f2';})); }
 // Per-poll fees (CS-set). 0 = waived. Legacy meal polls fall back to the old
 // constants; a poll that never set a fee (e.g. a plain vote) defaults to 0.
 function pollMemberFee(poll){ return (poll&&poll.memberFee!=null)?poll.memberFee:(isMealPoll(poll)?MEAL_COSTS.rehearsal:0); }
@@ -7584,6 +7669,8 @@ function _rtTick(){
       return {id:p.id, label:p.label, dayLabel:p.day_label||'', type:p.type||'rehearsal',
               active:p.active===true||p.active==='true', fields:fields, votes:votes,
               showNames:prevShow[p.id]||false,
+              toAll:p.to_all!==false, degree:p.to_degree||null, offices:p.to_offices||[],
+              toIds:p.to_ids||[], isMeal:(p.is_meal==null?null:p.is_meal===true), createdBy:p.created_by||null,
               memberFee:(p.member_fee!=null?p.member_fee:null), guestFee:(p.guest_fee!=null?p.guest_fee:null),
               createdAt:p.created_at};
     });
@@ -9882,7 +9969,7 @@ function milestonesFor(m){
 // a congratulations note to the brother on (or just before) the day.
 function checkMilestones(){
   if(!CU||!MEMBERS.length)return;
-  var officers=MEMBERS.filter(function(x){return x.role==='dc'||x.role==='secretary'||x.role==='almoner';}).map(function(x){return x.id;});
+  var officers=MEMBERS.filter(function(x){return x.role==='master'||x.role==='dc'||x.role==='secretary'||x.role==='almoner';}).map(function(x){return x.id;});
   MEMBERS.forEach(function(m){
     milestonesFor(m).forEach(function(ms){
       var yr=ms.date.getFullYear();
@@ -10233,7 +10320,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 15:20:00');
+console.log('Portal build 2026-11-26 16:10:00');
 
 function toggleSharePractice(){
   if(!CU)return;
