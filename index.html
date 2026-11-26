@@ -139,6 +139,26 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy)}
   .bnav  { width: 244px; }
   #pg-app { padding-left: 246px; }
 }
+/* ── Mobile hamburger drawer (replaces the sideways-scrolling bottom bar) ── */
+.hamb{display:none;background:none;border:none;color:var(--navy);cursor:pointer;padding:6px;margin-right:2px;align-items:center}
+.drawer-scrim{display:none;position:fixed;inset:0;background:rgba(14,31,69,.42);z-index:120}
+@media (max-width:767px){
+  .hamb{display:flex}
+  .drawer-scrim.open{display:block}
+  .bnav{
+    top:0;left:0;bottom:0;right:auto;width:272px;max-width:82vw;
+    flex-direction:column;justify-content:flex-start;align-items:stretch;
+    border-top:none;border-right:2px solid var(--gb);
+    padding:10px 8px calc(14px + env(safe-area-inset-bottom));
+    overflow-y:auto;overflow-x:hidden;z-index:130;
+    transform:translateX(-110%);transition:transform .25s ease;
+    box-shadow:2px 0 18px rgba(14,31,69,.18);
+  }
+  .bnav.open{transform:translateX(0)}
+  .bnav .nb{flex-direction:row;justify-content:flex-start;gap:14px;width:100%;min-width:0;padding:13px 14px;border-radius:10px}
+  .bnav .nb span:last-child{font-size:15px}
+  .bnav .nb.on{background:var(--goldbg);color:var(--navy)}
+}
 </style>
 <style id="pm-styles">
 #pane-practice{padding:0!important;overflow-y:auto}
@@ -1252,6 +1272,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy)}
 <div id="pg-app" style="display:none;background:var(--bg);min-height:100vh">
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:10px">
+      <button class="hamb" onclick="toggleDrawer()" aria-label="Open menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <img src="logo.png" style="width:72px;height:72px;object-fit:contain" alt="">
       <div>
         <div class="sf" style="font-size:13px;font-weight:700;color:var(--navy);line-height:1.2">Lodge of Nairobi № 7187</div>
@@ -1641,6 +1662,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy)}
   <div id="pane-agenda" class="pane"></div>
   <div id="pane-admin" class="pane"></div>
   <div id="pane-memberdetail" class="pane"></div>
+  <div class="drawer-scrim" id="drawer-scrim" onclick="closeDrawer()"></div>
   <nav class="bnav" id="bnav"></nav>
 </div>
 </div>
@@ -2571,7 +2593,10 @@ function goTo(id){
   var nb=document.getElementById('nb-'+id);if(nb)nb.className='nb on';
   var map={home:rHome,members:rMembers,duties:rDuties,library:rLibrary,summons:rSummons,notices:rNotices,profile:rProfile,calendar:rCalendar,almoner:rAlmoner,reports:rReports,polls:rPolls,practice:rPractice,assignduty:rAssignForm,memberdetail:rMemberDetail,mentor:rMentor,agenda:rAgenda};
   if(map[id])map[id]();
+  closeDrawer();
 }
+function toggleDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(!b)return; var open=b.classList.toggle('open'); if(s)s.classList.toggle('open',open); }
+function closeDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(b)b.classList.remove('open'); if(s)s.classList.remove('open'); }
 
 // ── RSVP widget ───────────────────────────────────────────────────────────
 
@@ -10177,7 +10202,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 14:05:00');
+console.log('Portal build 2026-11-26 14:25:00');
 
 function toggleSharePractice(){
   if(!CU)return;
