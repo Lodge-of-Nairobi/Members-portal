@@ -2608,6 +2608,7 @@ function goTo(id){
   var map={home:rHome,members:rMembers,duties:rDuties,library:rLibrary,summons:rSummons,notices:rNotices,profile:rProfile,calendar:rCalendar,almoner:rAlmoner,reports:rReports,polls:rPolls,practice:rPractice,assignduty:rAssignForm,memberdetail:rMemberDetail,mentor:rMentor,agenda:rAgenda};
   if(map[id])map[id]();
   closeDrawer();
+  window._votingPoll=null;
 }
 function toggleDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(!b)return; var open=b.classList.toggle('open'); if(s)s.classList.toggle('open',open); }
 function closeDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(b)b.classList.remove('open'); if(s)s.classList.remove('open'); }
@@ -3173,6 +3174,7 @@ function rPolls(){
       h+='<div id="new-poll-form" style="display:'+(pollForm?'block':'none')+';margin-bottom:14px"><div class="card" style="border:2px solid var(--gold)">';
       h+='<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px">New poll</div>';
       h+='<div class="fg"><label class="lbl">Question</label><input id="poll-label" placeholder="e.g. Do you support a June social?"></div>';
+      h+='<div class="fg"><label class="lbl">Answer options <span style="font-size:10px;color:var(--t3)">(optional, comma-separated \u2014 blank = Yes/No)</span></label><input id="poll-q-options" placeholder="e.g. Carnivore, Tamarind, Villa Rosa"></div>';
       h+='<div class="fg"><label class="lbl">Relevant date</label><input type="date" id="poll-date"></div>';
       h+=renderAudiencePicker('pa');
       h+='<div style="display:flex;gap:8px;margin-top:4px">';
@@ -3222,6 +3224,7 @@ function rPolls(){
 function castVote(pid,fid,val){
   var p=POLLS.find(function(x){return x.id===pid;});
   if(!p)return;
+  window._votingPoll=pid;
   if(!p.votes[CU.id])p.votes[CU.id]={};
   p.votes[CU.id][fid]=val;
   // Save only on Submit — no Supabase call here to avoid race conditions
@@ -3293,7 +3296,11 @@ function createPoll(){
   var mfEl=document.getElementById('poll-member-fee'), gfEl=document.getElementById('poll-guest-fee');
   var memberFee=mfEl?(mfEl.value!==''?Math.max(0,parseInt(mfEl.value,10)||0):MEAL_COSTS.rehearsal):0;
   var guestFee=gfEl?(gfEl.value!==''?Math.max(0,parseInt(gfEl.value,10)||0):MEAL_COSTS.guest_surcharge):0;
-  if(!_mc){ fields=[{id:'f1',type:'yesno',label:label.value.trim(),yesLabel:'Yes',noLabel:'No'}]; }
+  if(!_mc){
+    var _oq=document.getElementById('poll-q-options'); var _ol=(_oq&&_oq.value.trim())?_oq.value.split(',').map(function(o){return o.trim();}).filter(Boolean):[];
+    if(_ol.length>=2){ fields=[{id:'f1',type:'choice',label:label.value.trim(),options:_ol}]; }
+    else { fields=[{id:'f1',type:'yesno',label:label.value.trim(),yesLabel:'Yes',noLabel:'No'}]; }
+  }
   var _aud=readAudience('pa'); if(_aud===null){alert('Choose who to share the poll with.');return;}
   var poll={id:'poll-tmp-'+Date.now(),type:type?type.value:'rehearsal',
     label:label.value.trim(),dayLabel:dayLabel,date:date.value,
@@ -7172,7 +7179,8 @@ function renderPollVoter(poll,myV,isClosed){
 
   // ── Submitted state ────────────────────────────────────────────────────
   if(submitted && !isClosed){
-    var _f1l=_f1Labels(poll); var attend  = myV.f1===true?_f1l.yes:myV.f1===false?_f1l.no:'—';
+    var _f1f=((Array.isArray(poll.fields)?poll.fields:[]).find(function(x){return x.id==='f1';}))||{};
+    var attend; if(_f1f.type==='choice'){ attend=myV.f1||'—'; } else { var _f1l=_f1Labels(poll); attend=myV.f1===true?_f1l.yes:myV.f1===false?_f1l.no:'—'; }
     var meal    = myV.f2||'';
     var _gl=(myV.guests||[]).filter(function(g){return g&&(g.name||g.phone);});
     var guest   = _gl.length?(_gl.length+' guest'+(_gl.length!==1?'s':'')+': '+_gl.map(function(g){return (g.name||'?')+(g.meal?' ('+g.meal+')':'');}).join(', ')):(myV.f3===true?(myV.f4?'Guest: '+myV.f4:'Bringing a guest'):'');
@@ -7247,8 +7255,8 @@ function renderPollVoter(poll,myV,isClosed){
     h+='</div>';
   });
 
-  // ── Guests (name + phone, several) — shown when attending ───────────────
-  if(myV.f1===true){
+  // ── Guests (name + phone, several) — meal polls only ───────────────────
+  if(isMealPoll(poll)&&myV.f1===true){
     h+=renderPollGuests(poll);
   }
 
@@ -7314,12 +7322,13 @@ function submitVote(pollId){
   var poll = POLLS.find(function(p){return p.id===pollId;});
   if(!poll) return;
   if(!poll.votes[CU.id] || poll.votes[CU.id].f1===undefined){
-    alert('Please select Yes or No for attendance before submitting.');
+    alert('Please choose an answer before submitting.');
     return;
   }
   poll.votes[CU.id]._submitted = true;
   poll.votes[CU.id]._submittedAt = new Date().toISOString();
   supaUpsertVote(pollId, poll.votes[CU.id]);
+  window._votingPoll=null;
   var active=document.querySelector('.pane.on');
   var id=active?active.id.replace('pane-',''):'';
   if(id==='notices')rNotices();
@@ -7660,7 +7669,7 @@ function _rtTick(){
   });
 
   // Refresh polls (match the main loader's mapping so fees / showNames survive)
-  _fetchIfChanged('polls', 'polls?select=*,poll_votes(*)&order=created_at.desc', function(d){
+  if(!window._votingPoll)_fetchIfChanged('polls', 'polls?select=*,poll_votes(*)&order=created_at.desc', function(d){
     var prevShow={}; POLLS.forEach(function(p){prevShow[p.id]=p.showNames;});
     POLLS = d.map(function(p){
       var votes={};
@@ -10320,7 +10329,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 16:10:00');
+console.log('Portal build 2026-11-26 16:35:00');
 
 function toggleSharePractice(){
   if(!CU)return;
