@@ -2959,9 +2959,13 @@ function rPolls(){
     h+='<option value="meeting">Lodge meeting</option>';
     h+='<option value="other">Other</option>';
     h+='</select></div></div>';
-    h+='<label style="display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:13px;color:var(--t2)"><input type="checkbox" id="poll-is-meal" checked onchange="var r=document.getElementById(\'poll-meal-row\');if(r)r.style.display=this.checked?\'\':\'none\'"> Collect meal preference</label>';
+    h+='<label style="display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:13px;color:var(--t2)"><input type="checkbox" id="poll-is-meal" checked onchange="_pollMealToggle()"> Collect meal preference (members choose "Dining / Not dining")</label>';
     h+='<div id="poll-meal-row" class="fg"><label class="lbl">Meal options <span style="font-size:10px;color:var(--t3)">(comma-separated)</span></label>';
     h+='<input id="poll-meal-options" value="Vegetarian, Non-vegetarian">';
+    h+='</div>';
+    h+='<div id="poll-custom-row" style="display:none">';
+    h+='<div class="fg"><label class="lbl">Question <span style="font-size:10px;color:var(--t3)">(optional)</span></label><input id="poll-q-label" placeholder="e.g. Festive board venue?"></div>';
+    h+='<div class="fg"><label class="lbl">Answer options <span style="font-size:10px;color:var(--t3)">(comma-separated)</span></label><input id="poll-q-options" placeholder="e.g. Carnivore, Tamarind, Villa Rosa"></div>';
     h+='</div>';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
     h+='<div class="fg" style="margin:0"><label class="lbl">Fee per brother (KShs)</label><input id="poll-member-fee" type="number" inputmode="numeric" value="0" placeholder="0 = none"></div>';
@@ -3183,9 +3187,16 @@ function createPoll(){
   if(mealOpts&&mealOpts.value.trim()){
     mealOptsList=mealOpts.value.split(',').map(function(o){return o.trim();}).filter(Boolean);
   }
-  var fields=[{id:'f1',type:'yesno',label:'Attending?'}];
+  var fields;
   if(isMeal){
+    fields=[{id:'f1',type:'yesno',label:'Will you be dining?',yesLabel:'Dining',noLabel:'Not dining'}];
     fields.push({id:'f2',type:'choice',label:'Meal preference',options:mealOptsList,showIf:{fid:'f1',val:true}});
+  } else {
+    fields=[{id:'f1',type:'yesno',label:'Attending?',yesLabel:'Attending',noLabel:'Not attending'}];
+    var _ql=document.getElementById('poll-q-label'), _qo=document.getElementById('poll-q-options');
+    var _qLabel=_ql?_ql.value.trim():'';
+    var _qOpts=(_qo&&_qo.value.trim())?_qo.value.split(',').map(function(o){return o.trim();}).filter(Boolean):[];
+    if(_qLabel&&_qOpts.length){ fields.push({id:'f2',type:'choice',label:_qLabel,options:_qOpts}); }
   }
   // Guests are captured as a name + phone (+ meal) list in the voter, not single fields
   var mfEl=document.getElementById('poll-member-fee'), gfEl=document.getElementById('poll-guest-fee');
@@ -3266,6 +3277,8 @@ function _pollBusy(){ if(pollForm)return true; var f=document.getElementById('ne
 // True when a brother has a poll response open (radio/choice selections live in
 // the DOM, so a background re-render would wipe them mid-answer).
 function _voterBusy(){ return !!window._pollExpanded; }
+function _pollMealToggle(){ var c=document.getElementById('poll-is-meal'); var on=c?c.checked:true; var mr=document.getElementById('poll-meal-row'); var cr=document.getElementById('poll-custom-row'); if(mr)mr.style.display=on?'':'none'; if(cr)cr.style.display=on?'none':''; }
+function _f1Labels(poll){ var f=(Array.isArray(poll&&poll.fields)?poll.fields:[]).find(function(x){return x.id==='f1';})||{}; return {yes:f.yesLabel||'Attending', no:f.noLabel||'Not attending'}; }
 
 function togglePollFieldOptions(type){
   var wrap=document.getElementById('pf-options-wrap');
@@ -4491,7 +4504,7 @@ function rNotices(){
         h+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">';
         if(submitted){
           // Already responded — show status only
-          var att=myV.f1===true?'Attending':myV.f1===false?'Not attending':'—';
+          var _f1l=_f1Labels(relPoll); var att=myV.f1===true?_f1l.yes:myV.f1===false?_f1l.no:'—';
           var meal=myV.f2?' &middot; '+myV.f2:'';
           h+='<div style="background:var(--okbg);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between">';
           h+='<div><span style="color:var(--ok);font-weight:700">&#10003; Submitted</span><span style="font-size:12px;color:var(--t2)"> — '+att+meal+'</span></div>';
@@ -7062,7 +7075,7 @@ function renderPollVoter(poll,myV,isClosed){
 
   // ── Submitted state ────────────────────────────────────────────────────
   if(submitted && !isClosed){
-    var attend  = myV.f1===true?'Attending':myV.f1===false?'Not attending':'—';
+    var _f1l=_f1Labels(poll); var attend  = myV.f1===true?_f1l.yes:myV.f1===false?_f1l.no:'—';
     var meal    = myV.f2||'';
     var _gl=(myV.guests||[]).filter(function(g){return g&&(g.name||g.phone);});
     var guest   = _gl.length?(_gl.length+' guest'+(_gl.length!==1?'s':'')+': '+_gl.map(function(g){return (g.name||'?')+(g.meal?' ('+g.meal+')':'');}).join(', ')):(myV.f3===true?(myV.f4?'Guest: '+myV.f4:'Bringing a guest'):'');
@@ -7108,7 +7121,7 @@ function renderPollVoter(poll,myV,isClosed){
     if(field.showIf){if(myV[field.showIf.fid]!==field.showIf.val)return;}
     h+='<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:var(--t3);margin-bottom:6px">'+field.label+'</div>';
     if(field.type==='yesno'){
-      [{lbl:'Yes',val:true},{lbl:'No',val:false}].forEach(function(o){
+      [{lbl:field.yesLabel||'Yes',val:true},{lbl:field.noLabel||'No',val:false}].forEach(function(o){
         var active=myV[field.id]===o.val;
         h+='<button data-pid="'+poll.id+'" data-fid="'+field.id+'" data-bval="'+o.val+'" onclick="castVote(this.dataset.pid,this.dataset.fid,JSON.parse(this.dataset.bval))"';
         h+=' style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:6px;border-radius:8px;border:2px solid '+(active?'var(--navy)':'var(--bdr)')+';background:'+(active?'var(--goldbg)':'var(--white)')+';cursor:pointer;width:100%;touch-action:manipulation">';
@@ -10208,7 +10221,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 14:45:00');
+console.log('Portal build 2026-11-26 15:00:00');
 
 function toggleSharePractice(){
   if(!CU)return;
