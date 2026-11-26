@@ -1871,6 +1871,9 @@ function loadAppData() {
                 memberFee:(p.member_fee!=null?p.member_fee:null), guestFee:(p.guest_fee!=null?p.guest_fee:null)};
       });
     }),
+    safeFetch('poll_change_requests?select=*&order=created_at.desc', function(d) {
+      CHANGE_REQUESTS = (d||[]).map(dbChangeReq);
+    }),
     safeFetch('sub_payments?select=*', function(d) {
       SUB_PAYMENTS = d.map(function(p) {
         return {id:p.id, memberId:p.member_id, year:p.year, amount:p.amount,
@@ -2100,6 +2103,8 @@ function pushNotice(type,title,body,toIds,opts){
 
 
 var POLLS=[];
+var CHANGE_REQUESTS=[];
+function dbChangeReq(r){ return {id:r.id,pollId:r.poll_id,memberId:r.member_id,proposed:(typeof r.proposed==='string'?(function(){try{return JSON.parse(r.proposed);}catch(e){return {};}})():r.proposed)||{},reason:r.reason||'',status:r.status||'pending',csReason:r.cs_reason||'',decidedBy:r.decided_by||null,createdAt:r.created_at,decidedAt:r.decided_at||null}; }
 
 
 // ── Subscription config ───────────────────────────────────────────────────
@@ -3062,6 +3067,8 @@ function rPolls(){
       h2+='</div>';
       // Response summary
       h2+=renderPollSummary(poll);
+      // Pending change requests (locked-poll amendments awaiting approval)
+      h2+=renderPendingChanges(poll);
       // Controls
       h2+='<div style="display:flex;gap:8px;margin-bottom:12px">';
       h2+=poll.active
@@ -4633,11 +4640,18 @@ function rNotices(){
           // Already responded — show status only
           var _f1l=_f1Labels(relPoll); var att=myV.f1===true?_f1l.yes:myV.f1===false?_f1l.no:'—';
           var meal=myV.f2?' &middot; '+myV.f2:'';
+          var _pend=myOpenChangeReq(relPoll.id);
+          var _lastCR=myLastChangeReq(relPoll.id);
+          var _lkd=isPollLocked(relPoll);
           h+='<div style="background:var(--okbg);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between">';
           h+='<div><span style="color:var(--ok);font-weight:700">&#10003; Submitted</span><span style="font-size:12px;color:var(--t2)"> — '+att+meal+'</span></div>';
-          h+='<button class="btn btn-n btn-sm" style="font-size:11px" data-pid="'+relPoll.id+'" onclick="event.stopPropagation();changeVote(this.dataset.pid);rNotices()">Change</button>';
+          if(_pend){ h+='<span class="badge" style="background:var(--warnbg);color:var(--warn)">&#8987; Change pending</span>'; }
+          else { h+='<button class="btn btn-n btn-sm" style="font-size:11px" data-pid="'+relPoll.id+'" onclick="event.stopPropagation();changeVote(this.dataset.pid)">'+(_lkd?'Request a change':'Change')+'</button>'; }
           h+='</div>';
+          if(_pend){ h+='<div style="font-size:11px;color:var(--t2);margin-top:6px;padding:6px 10px;background:var(--warnbg);border-radius:6px">Your change request is awaiting the Chief Steward&rsquo;s approval.</div>'; }
+          else if(_lastCR&&_lastCR.status==='rejected'&&_lastCR.csReason){ h+='<div style="font-size:11px;color:var(--bad);margin-top:6px;padding:6px 10px;background:var(--badbg);border-radius:6px">Previous change request declined: '+esc(_lastCR.csReason)+'</div>'; }
           h+=renderMealPaymentSelf(relPoll);
+          if(_crOpen===relPoll.id){ h+=renderChangeRequestForm(relPoll); }
         } else {
           // Not yet responded — show expand toggle
           h+='<button data-nid="'+n.id+'" onclick="event.stopPropagation();window._pollExpanded=(window._pollExpanded===this.dataset.nid?null:this.dataset.nid);rNotices()" style="display:flex;align-items:center;justify-content:space-between;width:100%;background:var(--warnbg);border:none;border-radius:8px;padding:10px 12px;cursor:pointer;touch-action:manipulation">';
@@ -6063,6 +6077,115 @@ function supaUpsertVoteFor(pollId,memberId,answers){
     }
   }).catch(function(e){alert('Amendment save failed: '+e.message);});
 }
+// ── Poll change requests (locked-poll amendments reviewed by the Chief Steward) ──
+var _crOpen=null;       // poll id whose request form is open (brother side)
+var _crDraft=null;      // staged proposed answers
+var _crRejectOpen=null; // request id whose reject-reason panel is open (CS side)
+function myOpenChangeReq(pid){ return CHANGE_REQUESTS.find(function(r){return r.pollId===pid&&r.memberId===CU.id&&r.status==='pending';}); }
+function myLastChangeReq(pid){ var a=CHANGE_REQUESTS.filter(function(r){return r.pollId===pid&&r.memberId===CU.id;}).sort(function(x,y){return (y.createdAt||'').localeCompare(x.createdAt||'');}); return a[0]||null; }
+function pollPendingReqs(pid){ return CHANGE_REQUESTS.filter(function(r){return r.pollId===pid&&r.status==='pending';}); }
+function openChangeRequest(pid){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; var cur=p.votes[CU.id]||{}; _crDraft={f1:cur.f1,f2:cur.f2}; _crOpen=pid; window._votingPoll=pid; _rerenderPoll(); }
+function cancelChangeRequest(){ _crOpen=null; _crDraft=null; window._votingPoll=null; _rerenderPoll(); }
+function crSetF1(val){ if(!_crDraft)_crDraft={}; _crDraft.f1=(val==='true'?true:val==='false'?false:val); if(_crDraft.f1!==true)_crDraft.f2=undefined; _rerenderPoll(); }
+function crSetF2(opt){ if(!_crDraft)_crDraft={}; _crDraft.f2=opt; _rerenderPoll(); }
+function renderChangeRequestForm(poll){
+  var _d=_crDraft||{};
+  var _f1=((Array.isArray(poll.fields)?poll.fields:[]).find(function(x){return x.id==='f1';}))||{};
+  var h='<div style="margin-top:8px;padding:10px;background:var(--white);border:1px solid var(--warn);border-radius:8px">';
+  h+='<div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">Request a change</div>';
+  if(_f1.type==='choice'){
+    h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+    (_f1.options||[]).forEach(function(opt){ h+='<button class="btn btn-sm" style="'+(_d.f1===opt?'background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" data-o="'+esc(opt)+'" onclick="event.stopPropagation();crSetF1(this.dataset.o)">'+esc(opt)+'</button>'; });
+    h+='</div>';
+  } else {
+    h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
+    h+='<button class="btn btn-sm" style="flex:1;justify-content:center'+(_d.f1===true?';background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" onclick="event.stopPropagation();crSetF1(\'true\')">'+(_f1.yesLabel||'Yes')+'</button>';
+    h+='<button class="btn btn-sm" style="flex:1;justify-content:center'+(_d.f1===false?';background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" onclick="event.stopPropagation();crSetF1(\'false\')">'+(_f1.noLabel||'No')+'</button>';
+    h+='</div>';
+  }
+  if(isMealPoll(poll)&&_d.f1===true){
+    var opts=pollMealOptions(poll);
+    if(opts.length){ h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      opts.forEach(function(opt){ h+='<button class="btn btn-sm" style="'+(_d.f2===opt?'background:var(--navy);color:#fff;border-color:var(--navy)':'')+'" data-o="'+esc(opt)+'" onclick="event.stopPropagation();crSetF2(this.dataset.o)">'+esc(opt)+'</button>'; });
+      h+='</div>'; }
+  }
+  h+='<label class="lbl" style="display:block;margin-bottom:4px">Reason for the change</label>';
+  h+='<textarea id="cr-reason" placeholder="Let the Chief Steward know why" style="width:100%;min-height:60px;margin-bottom:8px" onclick="event.stopPropagation()"></textarea>';
+  h+='<div style="display:flex;gap:8px">';
+  h+='<button class="btn btn-navy btn-sm" style="flex:1;justify-content:center" data-pid="'+poll.id+'" onclick="event.stopPropagation();submitChangeRequest(this.dataset.pid)">Submit request</button>';
+  h+='<button class="btn btn-n btn-sm" onclick="event.stopPropagation();cancelChangeRequest()">Cancel</button>';
+  h+='</div></div>';
+  return h;
+}
+function submitChangeRequest(pid){
+  var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return;
+  var d=_crDraft||{};
+  if(d.f1===undefined||d.f1===null){alert('Please choose your response first.');return;}
+  var rsn=(document.getElementById('cr-reason')||{}).value; rsn=rsn?rsn.trim():'';
+  if(!rsn){alert('Please add a short reason for the Chief Steward.');return;}
+  var proposed={f1:d.f1}; if(d.f2!==undefined&&d.f2!==null)proposed.f2=d.f2;
+  var cur=p.votes[CU.id]||{}; if(Array.isArray(cur.guests))proposed.guests=cur.guests;
+  var payload={poll_id:pid,member_id:CU.id,proposed:proposed,reason:rsn,status:'pending'};
+  supa('poll_change_requests',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify(payload)})
+    .then(function(r){ if(!r.ok){return r.text().then(function(t){alert('Could not send request: '+t);return null;});} return r.json(); })
+    .then(function(data){ if(data){ var row=Array.isArray(data)?data[0]:data; if(row&&row.id){ CHANGE_REQUESTS.unshift(dbChangeReq(row));
+        var stw=MEMBERS.filter(function(m){return officeToRole(m.office)==='steward';}).map(function(m){return m.id;});
+        if(stw.length)pushNotice('info','Poll change request',dn(CU)+' has requested a change to \u201c'+p.label+'\u201d. Review it under Polls.',stw,{});
+      } } })
+    .catch(function(e){alert('Could not send request: '+e.message);})
+    .then(function(){ _crOpen=null;_crDraft=null;window._votingPoll=null; _rerenderPoll(); });
+}
+function approveChangeRequest(reqId){
+  var req=CHANGE_REQUESTS.find(function(r){return r.id===reqId;}); if(!req)return;
+  var p=POLLS.find(function(x){return x.id===req.pollId;}); if(!p)return;
+  var v=Object.assign({},p.votes[req.memberId]||{},req.proposed);
+  v._submitted=true; v._amendedBy=CU.id; v._submittedAt=new Date().toISOString(); v._changeRequested=false;
+  p.votes[req.memberId]=v;
+  supaUpsertVoteFor(req.pollId,req.memberId,v);
+  supa('poll_change_requests?id=eq.'+reqId,{method:'PATCH',body:JSON.stringify({status:'approved',decided_by:CU.id,decided_at:new Date().toISOString()})}).catch(function(){});
+  req.status='approved'; req.decidedBy=CU.id;
+  pushNotice('info','Change approved','Your requested change to \u201c'+p.label+'\u201d was approved by the Chief Steward.',[req.memberId],{});
+  rPolls();
+}
+function openRejectReq(reqId){ _crRejectOpen=(_crRejectOpen===reqId?null:reqId); rPolls(); }
+function rejectChangeRequest(reqId){
+  var req=CHANGE_REQUESTS.find(function(r){return r.id===reqId;}); if(!req)return;
+  var p=POLLS.find(function(x){return x.id===req.pollId;});
+  var rsn=(document.getElementById('cr-rej-'+reqId)||{}).value; rsn=rsn?rsn.trim():'';
+  if(!rsn){alert('Please enter a reason for declining.');return;}
+  supa('poll_change_requests?id=eq.'+reqId,{method:'PATCH',body:JSON.stringify({status:'rejected',cs_reason:rsn,decided_by:CU.id,decided_at:new Date().toISOString()})}).catch(function(){});
+  req.status='rejected'; req.csReason=rsn; req.decidedBy=CU.id;
+  pushNotice('info','Change declined','Your requested change to \u201c'+(p?p.label:'a poll')+'\u201d was declined: '+rsn,[req.memberId],{});
+  _crRejectOpen=null; rPolls();
+}
+function renderPendingChanges(poll){
+  var reqs=pollPendingReqs(poll.id); if(!reqs.length)return '';
+  var _f1=((Array.isArray(poll.fields)?poll.fields:[]).find(function(x){return x.id==='f1';}))||{};
+  var fmt=function(ans){ if(!ans)return '\u2014'; var a; if(_f1.type==='choice')a=ans.f1||'\u2014'; else a=ans.f1===true?(_f1.yesLabel||'Yes'):ans.f1===false?(_f1.noLabel||'No'):'\u2014'; if(ans.f2)a+=' &middot; '+ans.f2; return a; };
+  var h='<div style="margin-bottom:10px;padding:10px;background:var(--warnbg);border:1px solid var(--warn);border-radius:8px">';
+  h+='<div style="font-size:12px;font-weight:700;color:var(--warn);margin-bottom:8px">&#9888; Pending changes ('+reqs.length+')</div>';
+  reqs.forEach(function(req){
+    var m=MEMBERS.find(function(x){return x.id===req.memberId;})||{name:'Unknown'};
+    var cur=poll.votes[req.memberId];
+    h+='<div style="padding:8px;background:var(--white);border-radius:6px;margin-bottom:6px">';
+    h+='<div style="font-size:13px;font-weight:600;color:var(--navy)">'+dn(m)+'</div>';
+    h+='<div style="font-size:12px;color:var(--t2);margin:3px 0"><span style="color:var(--t3)">'+fmt(cur)+'</span> &rarr; <strong>'+fmt(req.proposed)+'</strong></div>';
+    if(req.reason)h+='<div style="font-size:12px;color:var(--t2);font-style:italic;margin-bottom:6px">&ldquo;'+esc(req.reason)+'&rdquo;</div>';
+    h+='<div style="display:flex;gap:6px">';
+    h+='<button class="btn btn-ok btn-sm" style="flex:1;justify-content:center" data-r="'+req.id+'" onclick="approveChangeRequest(this.dataset.r)">Approve</button>';
+    h+='<button class="btn btn-sm" style="flex:1;justify-content:center;background:var(--badbg);color:var(--bad);border:1px solid var(--bad)" data-r="'+req.id+'" onclick="openRejectReq(this.dataset.r)">Reject</button>';
+    h+='</div>';
+    if(_crRejectOpen===req.id){
+      h+='<div style="margin-top:6px">';
+      h+='<textarea id="cr-rej-'+req.id+'" placeholder="Reason for declining (the brother will see this)" style="width:100%;min-height:50px;margin-bottom:6px"></textarea>';
+      h+='<button class="btn btn-sm" style="width:100%;justify-content:center;background:var(--bad);color:#fff;border-color:var(--bad)" data-r="'+req.id+'" onclick="rejectChangeRequest(this.dataset.r)">Confirm decline</button>';
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  h+='</div>';
+  return h;
+}
 function toggleStewardPay(key){stewardPayOpen=(stewardPayOpen===key?null:key);rPolls();}
 
 function recordMealPayment(memberId, pollId){
@@ -7371,28 +7494,15 @@ function submitVote(pollId){
   if(id==='notices')rNotices();
   else if(id==='polls'&&CU.role==='steward')rPolls();
   else rHome();
+  buildNav();
 }
 
 function changeVote(pollId){
   var poll = POLLS.find(function(p){return p.id===pollId;});
   if(!poll) return;
   if(isPollLocked(poll)){
-    // After lock: send a change REQUEST to Chief Steward — do NOT auto-change
-    var stewardIds = MEMBERS.filter(function(m){
-      return officeToRole(m.office)==='steward';
-    }).map(function(m){return m.id;});
-    if(stewardIds.length){
-      pushNotice('poll','⚠️ Change request — '+gn(CU),
-        gn(CU)+' has requested to change their response for: '+poll.label+
-        '. Current response: '+(poll.votes[CU.id]&&poll.votes[CU.id].f1===true?'Attending':'Not attending')+
-        '. Please contact them directly and update if needed.',
-        stewardIds);
-    }
-    // Mark pending change request — vote stays locked
-    poll.votes[CU.id]._changeRequested = true;
-    supaUpsertVote(pollId, poll.votes[CU.id]);
-    alert('Change request sent to the Chief Steward. Your current response remains until they confirm.');
-    _rerenderPoll();
+    // After lock: open a structured change request for Chief Steward approval
+    openChangeRequest(pollId);
     return;
   }
   // Not locked — allow free editing
@@ -7703,6 +7813,13 @@ function _rtTick(){
     buildNav();
     if(pane==='notices' && !_paneInputFocused('pane-notices') && !_voterBusy()) rNotices();
     if(pane==='home' && !_voterBusy()) rHome();
+  });
+
+  // Refresh poll change requests (both the CS review list and brother status)
+  _fetchIfChanged('poll_change_requests', 'poll_change_requests?select=*&order=created_at.desc', function(d){
+    CHANGE_REQUESTS = (d||[]).map(dbChangeReq);
+    if(pane==='polls' && !_pollBusy()) rPolls();
+    if(pane==='notices' && !_paneInputFocused('pane-notices') && !_voterBusy()) rNotices();
   });
 
   // Refresh polls (match the main loader's mapping so fees / showNames survive)
@@ -10366,7 +10483,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 15:45:58');
+console.log('Portal build 2026-11-26 16:47:25');
 
 function toggleSharePractice(){
   if(!CU)return;
