@@ -1825,9 +1825,12 @@ function loadAppData() {
         return {id:n.id, type:n.type||'info',
                 title:n.title||'Notice', body:n.body||'',
                 to:n.to_all?['all']:(n.to_ids||[]),
+                degree:n.to_degree||null, pinned:n.pinned===true,
+                archived:n.archived===true, expiresAt:n.expires_at||null,
                 ts:n.created_at||new Date().toISOString(),
                 date:(n.created_at||new Date().toISOString()).split('T')[0]};
       });
+      if(CU&&CU.id){ supa('notice_reads?select=notice_id&member_id=eq.'+CU.id).then(function(r){return r.ok?r.json():[];}).then(function(rows){ (rows||[]).forEach(function(x){ _readIds[x.notice_id]=true; }); if(typeof buildNav==='function')buildNav(); }).catch(function(){}); }
     }),
     safeFetch('polls?select=*,poll_votes(*)&order=created_at.desc', function(d) {
       POLLS = d.map(function(p) {
@@ -2030,13 +2033,17 @@ var STEWARD_PAYMENTS=[];
 
 var noticeCounter=100;
 var _prevUnread=0;
-function pushNotice(type,title,body,toIds){
+function pushNotice(type,title,body,toIds,opts){
+  opts=opts||{};
   // If toIds contains all member IDs (lodge-wide), use to_all flag instead
   // so new members automatically see it without needing ID in the list
-  var toAll=toIds.indexOf('all')>-1||toIds.length>=MEMBERS.length;
+  var toAll=(toIds.indexOf('all')>-1||toIds.length>=MEMBERS.length)&&!opts.degree;
   // Don't send to_ids when to_all=true — empty uuid[] causes type errors in Supabase
   var payload={type:type,title:title,body:body,to_all:toAll,created_by:CU.id};
   if(!toAll){payload.to_ids=Array.isArray(toIds)?toIds:[];}
+  if(opts.degree)payload.to_degree=opts.degree;
+  if(opts.pinned)payload.pinned=true;
+  if(opts.expiresAt)payload.expires_at=opts.expiresAt;
   supa('notices',{method:'POST',
     headers:{'Prefer':'return=representation'},
     body:JSON.stringify(payload)})
@@ -2053,7 +2060,9 @@ function pushNotice(type,title,body,toIds){
       var row=Array.isArray(data)?data[0]:data;
       if(row&&row.id){
         NOTICES.unshift({id:row.id,type:type,title:title,body:body,
-          to:toIds,date:new Date().toISOString().split('T')[0],read:false});
+          to:toIds,degree:opts.degree||null,pinned:!!opts.pinned,archived:false,
+          expiresAt:opts.expiresAt||null,ts:new Date().toISOString(),
+          date:new Date().toISOString().split('T')[0],read:false});
         buildNav();
         if(typeof notifyUser==='function')notifyUser();
       }
@@ -2390,25 +2399,83 @@ function syncAllDegrees(){
   });
 }
 
+function noticeVisible(n){
+  if(!CU||!n)return false;
+  if(n.archived)return false;
+  if(n.expiresAt){ var e=Date.parse(String(n.expiresAt).replace(' ','T')); if(!isNaN(e)&&e<Date.now())return false; }
+  if(n.degree){ var ord={EA:1,FC:2,MM:3}; return (ord[CU.deg]||0)>=(ord[n.degree]||0); }
+  var to=n.to;
+  return !to?false:(typeof to==='string'?(to==='all'||to===CU.id):(to.indexOf('all')>-1||to.indexOf(CU.id)>-1));
+}
 function unreadNotices(){
   if(!CU||!NOTICES)return[];
-  var seen=CU.lastSeenNotices;  // full ISO timestamp or null
   return NOTICES.filter(function(n){
-    var to=n.to;
-    var mine=!to?false:typeof to==='string'?to==='all'||to===CU.id:to.indexOf('all')>-1||to.indexOf(CU.id)>-1;
-    if(!mine)return false;
-    // A poll notice you've already submitted is never unread
+    if(!noticeVisible(n))return false;
+    if(_readIds[n.id])return false;
     if(n.type==='poll'){
       var rel=POLLS.find(function(p){return (n.title||'').indexOf(p.label)>-1;});
       if(rel){ var v=rel.votes[CU.id]; if(v&&v._submitted===true) return false; }
     }
-    if(!seen)return true;  // never opened notices — all unread
-    var nts=n.ts||n.date||'';
-    var nMs=Date.parse(nts.replace(' ','T'));
-    var sMs=Date.parse(seen.replace(' ','T'));
-    if(isNaN(nMs)||isNaN(sMs))return false;
-    return nMs>sMs;
+    return true;
   });
+}
+function canPostNotice(){ return !!(CU&&CU.role&&CU.role!=='brother'); }
+function markNoticeRead(nid){
+  if(!nid||_readIds[nid])return;
+  _readIds[nid]=true;
+  if(String(nid).indexOf('auto-')!==0&&CU&&CU.id){
+    supa('notice_reads',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({notice_id:nid,member_id:CU.id})}).catch(function(){});
+  }
+  if(typeof buildNav==='function')buildNav();
+}
+function _ncAud(){ var v=(document.getElementById('nc-aud')||{}).value; var dw=document.getElementById('nc-degwrap'); var mw=document.getElementById('nc-memwrap'); if(dw)dw.style.display=(v==='degree')?'block':'none'; if(mw)mw.style.display=(v==='specific')?'block':'none'; }
+function submitNotice(){
+  var title=(document.getElementById('nc-title')||{}).value; title=title?title.trim():'';
+  var body=(document.getElementById('nc-body')||{}).value; body=body?body.trim():'';
+  if(!title){alert('Enter a title for the notice.');return;}
+  if(!body){alert('Enter the notice text.');return;}
+  var mode=(document.getElementById('nc-aud')||{}).value||'all';
+  var toIds=['all'], opts={};
+  if(mode==='degree'){ toIds=[]; opts.degree=(document.getElementById('nc-deg')||{}).value||'MM'; }
+  else if(mode==='specific'){
+    toIds=Array.prototype.slice.call(document.querySelectorAll('.nc-mem:checked')).map(function(x){return x.value;});
+    if(!toIds.length){alert('Select at least one brother.');return;}
+  }
+  if((document.getElementById('nc-pin')||{}).checked)opts.pinned=true;
+  var exp=(document.getElementById('nc-exp')||{}).value; if(exp)opts.expiresAt=exp+'T23:59:59';
+  pushNotice('general',title,body,toIds,opts);
+  window._noticeCompose=false;
+  setTimeout(function(){ if(typeof rNotices==='function')rNotices(); },400);
+}
+function toggleNoticePin(nid){ var n=NOTICES.find(function(x){return x.id===nid;}); if(!n)return; n.pinned=!n.pinned; supa('notices?id=eq.'+nid,{method:'PATCH',body:JSON.stringify({pinned:n.pinned})}).catch(function(){}); rNotices(); }
+function archiveNotice(nid){ if(!confirm('Archive this notice? It will be hidden from the list.'))return; var n=NOTICES.find(function(x){return x.id===nid;}); if(n)n.archived=true; supa('notices?id=eq.'+nid,{method:'PATCH',body:JSON.stringify({archived:true})}).catch(function(){}); rNotices(); }
+function deleteNotice(nid){ if(!confirm('Permanently delete this notice? This cannot be undone.'))return; NOTICES=NOTICES.filter(function(x){return x.id!==nid;}); supa('notices?id=eq.'+nid,{method:'DELETE'}).catch(function(){}); rNotices(); }
+function renderNoticeCompose(){
+  var open=window._noticeCompose===true;
+  var h='<div class="card" style="margin-bottom:12px;padding:0;overflow:hidden">';
+  h+='<button onclick="window._noticeCompose=!(window._noticeCompose===true);rNotices()" style="display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;text-align:left;padding:12px 14px;cursor:pointer">';
+  h+='<div style="width:32px;height:32px;border-radius:8px;background:var(--navy);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg class="ico" width="16" height="16" style="color:var(--gold)"><use href="#ico-plus"/></svg></div>';
+  h+='<div style="flex:1"><div style="font-weight:700;font-size:13px;color:var(--navy)">Post a notice</div><div style="font-size:11px;color:var(--t3)">Share an announcement with the brethren</div></div>';
+  h+='<span style="font-size:12px;color:var(--t3)">'+(open?'&#9650;':'&#9660;')+'</span></button>';
+  if(open){
+    h+='<div style="padding:0 14px 14px;border-top:1px solid var(--bdr)">';
+    h+='<label class="lbl" style="display:block;margin-top:12px;margin-bottom:4px">Title</label><input id="nc-title" placeholder="Notice title" style="width:100%;margin-bottom:8px">';
+    h+='<label class="lbl" style="display:block;margin-bottom:4px">Message</label><textarea id="nc-body" placeholder="Write the notice…" style="width:100%;min-height:90px;margin-bottom:8px"></textarea>';
+    h+='<label class="lbl" style="display:block;margin-bottom:4px">Send to</label><select id="nc-aud" onchange="_ncAud()" style="width:100%;margin-bottom:8px"><option value="all">All brethren</option><option value="degree">By degree</option><option value="specific">Specific brethren</option></select>';
+    h+='<div id="nc-degwrap" style="display:none;margin-bottom:8px"><select id="nc-deg" style="width:100%"><option value="EA">First Degree and above</option><option value="FC">Second Degree and above</option><option value="MM" selected>Master Masons only</option></select></div>';
+    h+='<div id="nc-memwrap" style="display:none;margin-bottom:8px;max-height:170px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px">';
+    MEMBERS.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(m){ h+='<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="nc-mem" value="'+m.id+'" style="width:16px;height:16px;flex:none">'+esc(dn(m))+'</label>'; });
+    h+='</div>';
+    h+='<div style="display:flex;gap:14px;align-items:center;margin-bottom:10px;flex-wrap:wrap">';
+    h+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);cursor:pointer"><input type="checkbox" id="nc-pin" style="width:16px;height:16px;flex:none">Pin to top</label>';
+    h+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2)">Expires <input type="date" id="nc-exp" style="padding:4px 8px"></label>';
+    h+='</div>';
+    h+='<button class="btn btn-navy" style="width:100%;justify-content:center" onclick="submitNotice()">Post notice</button>';
+    h+='</div>';
+  }
+  h+='</div>';
+  return h;
 }
 
 
@@ -4322,20 +4389,11 @@ var noticeCounter=100;
 
 function rNotices(){
   if(!CU)return;
-  // Mark all notices as "read" by updating the last_seen timestamp
-  var nowIso=new Date().toISOString();
-  if(!CU.lastSeenNotices||Date.parse(nowIso)>Date.parse(CU.lastSeenNotices.replace(' ','T'))){
-    CU.lastSeenNotices=nowIso;
-    supa('members?id=eq.'+CU.id,{method:'PATCH',
-      body:JSON.stringify({last_seen_notices:nowIso})
-    }).then(function(r){
-      if(!r.ok)r.text().then(function(t){console.warn('last_seen save failed:',r.status,t);});
-    }).catch(function(e){console.warn('last_seen error:',e);});
-    buildNav();
-  }
-  var mine=NOTICES.filter(function(n){
-    return (function(to){return !to?false:typeof to==='string'?to==='all'||to===CU.id:to.indexOf('all')>-1||to.indexOf(CU.id)>-1;})(n.to);
-  }).sort(function(a,b){return b.date.localeCompare(a.date);});
+  var mine=NOTICES.filter(noticeVisible).sort(function(a,b){
+    var pa=a.pinned?1:0, pb=b.pinned?1:0;
+    if(pa!==pb)return pb-pa;
+    return (b.ts||b.date||'').localeCompare(a.ts||a.date||'');
+  });
 
   var typeC={
     poll:'var(--navy)',assignment:'var(--gold)',welfare:'var(--ok)',
@@ -4353,6 +4411,8 @@ function rNotices(){
   var h='<div class="sf" style="font-size:20px;font-weight:700;color:var(--navy);margin-bottom:4px">Notices</div>';
   h+='<div style="font-size:12px;color:var(--t3);margin-bottom:16px">Lodge of Nairobi № 7187</div>';
 
+  if(canPostNotice())h+=renderNoticeCompose();
+
   if(!mine.length){
     h+='<div class="card" style="text-align:center;padding:32px;color:var(--t3)">No notices at this time.</div>';
     document.getElementById('pane-notices').innerHTML=h;
@@ -4364,9 +4424,13 @@ function rNotices(){
     var tbg=typeBg[n.type]||typeBg.info;
     var ico=typeIcon[n.type]||typeIcon.info;
     var isOpen=window._openNotice===n.id;
+    if(isOpen)markNoticeRead(n.id);
 
     // Find related poll if this is a poll notice
     var relPoll=n.type==='poll'?POLLS.find(function(p){return n.title.indexOf(p.label)>-1;}):null;
+    var _pollDone=false;
+    if(n.type==='poll'&&relPoll){ var _pv=relPoll.votes[CU.id]; _pollDone=!!(_pv&&_pv._submitted===true); }
+    var _unread=!_readIds[n.id]&&!_pollDone;
 
     h+='<div class="card" style="border-left:4px solid '+tc+';margin-bottom:8px;padding:0;overflow:hidden">';
 
@@ -4377,10 +4441,9 @@ function rNotices(){
     h+='<svg class="ico" width="16" height="16" style="color:'+tc+'"><use href="#ico-'+ico+'"/></svg></div>';
     h+='<div style="flex:1;min-width:0">';
     h+='<div style="font-weight:700;font-size:13px;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+n.title+'</div>';
-    h+='<div style="font-size:11px;color:var(--t3);margin-top:1px">'+n.date+'</div>';
+    h+='<div style="font-size:11px;color:var(--t3);margin-top:1px">'+n.date+(n.pinned?' &middot; <span style="color:var(--gold);font-weight:700">Pinned</span>':'')+'</div>';
     h+='</div>';
-    var _nm=Date.parse((n.ts||n.date||'').replace(' ','T'));var _sm=CU.lastSeenNotices?Date.parse(CU.lastSeenNotices.replace(' ','T')):0;var _nUn=(!CU.lastSeenNotices)||(!isNaN(_nm)&&_nm>_sm);
-    if(_nUn)h+='<div style="width:8px;height:8px;border-radius:50%;background:var(--bad);flex-shrink:0"></div>';
+    if(_unread)h+='<div style="width:8px;height:8px;border-radius:50%;background:var(--bad);flex-shrink:0"></div>';
     h+='<span style="font-size:12px;color:var(--t3);flex-shrink:0">'+(isOpen?'&#9650;':'&#9660;')+'</span>';
     h+='</button>';
 
@@ -4419,6 +4482,14 @@ function rNotices(){
             h+='</div>';
           }
         }
+        h+='</div>';
+      }
+      if(n.expiresAt){ h+='<div style="font-size:11px;color:var(--t3);margin-top:10px">Expires '+String(n.expiresAt).split('T')[0]+'</div>'; }
+      if(canPostNotice()&&String(n.id).indexOf('auto-')!==0){
+        h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--bdr)">';
+        h+='<button class="btn btn-n btn-sm" style="font-size:11px" data-id="'+n.id+'" onclick="event.stopPropagation();toggleNoticePin(this.dataset.id)">'+(n.pinned?'Unpin':'Pin to top')+'</button>';
+        h+='<button class="btn btn-n btn-sm" style="font-size:11px" data-id="'+n.id+'" onclick="event.stopPropagation();archiveNotice(this.dataset.id)">Archive</button>';
+        h+='<button class="btn btn-sm" style="font-size:11px;background:var(--badbg);color:var(--bad);border:1px solid var(--bad)" data-id="'+n.id+'" onclick="event.stopPropagation();deleteNotice(this.dataset.id)">Delete</button>';
         h+='</div>';
       }
       h+='</div>';
@@ -10106,7 +10177,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 13:40:00');
+console.log('Portal build 2026-11-26 14:05:00');
 
 function toggleSharePractice(){
   if(!CU)return;
