@@ -1847,7 +1847,7 @@ function loadAppData() {
         return {id:n.id, type:n.type||'info',
                 title:n.title||'Notice', body:n.body||'',
                 to:n.to_all?['all']:(n.to_ids||[]),
-                degree:n.to_degree||null, pinned:n.pinned===true,
+                degree:n.to_degree||null, offices:n.to_offices||[], pinned:n.pinned===true,
                 archived:n.archived===true, expiresAt:n.expires_at||null,
                 ts:n.created_at||new Date().toISOString(),
                 date:(n.created_at||new Date().toISOString()).split('T')[0]};
@@ -2064,6 +2064,7 @@ function pushNotice(type,title,body,toIds,opts){
   var payload={type:type,title:title,body:body,to_all:toAll,created_by:CU.id};
   if(!toAll){payload.to_ids=Array.isArray(toIds)?toIds:[];}
   if(opts.degree)payload.to_degree=opts.degree;
+  if(opts.offices&&opts.offices.length)payload.to_offices=opts.offices;
   if(opts.pinned)payload.pinned=true;
   if(opts.expiresAt)payload.expires_at=opts.expiresAt;
   supa('notices',{method:'POST',
@@ -2082,7 +2083,7 @@ function pushNotice(type,title,body,toIds,opts){
       var row=Array.isArray(data)?data[0]:data;
       if(row&&row.id){
         NOTICES.unshift({id:row.id,type:type,title:title,body:body,
-          to:toIds,degree:opts.degree||null,pinned:!!opts.pinned,archived:false,
+          to:toIds,degree:opts.degree||null,offices:opts.offices||[],pinned:!!opts.pinned,archived:false,
           expiresAt:opts.expiresAt||null,ts:new Date().toISOString(),
           date:new Date().toISOString().split('T')[0],read:false});
         buildNav();
@@ -2425,6 +2426,7 @@ function noticeVisible(n){
   if(!CU||!n)return false;
   if(n.archived)return false;
   if(n.expiresAt){ var e=Date.parse(String(n.expiresAt).replace(' ','T')); if(!isNaN(e)&&e<Date.now())return false; }
+  if(n.offices&&n.offices.length){ return n.offices.indexOf(CU.office)>-1; }
   if(n.degree){ var ord={EA:1,FC:2,MM:3}; return (ord[CU.deg]||0)>=(ord[n.degree]||0); }
   var to=n.to;
   return !to?false:(typeof to==='string'?(to==='all'||to===CU.id):(to.indexOf('all')>-1||to.indexOf(CU.id)>-1));
@@ -2451,7 +2453,7 @@ function markNoticeRead(nid){
   }
   if(typeof buildNav==='function')buildNav();
 }
-function _ncAud(){ var v=(document.getElementById('nc-aud')||{}).value; var dw=document.getElementById('nc-degwrap'); var mw=document.getElementById('nc-memwrap'); if(dw)dw.style.display=(v==='degree')?'block':'none'; if(mw)mw.style.display=(v==='specific')?'block':'none'; }
+function _ncAud(){ var v=(document.getElementById('nc-aud')||{}).value; var dw=document.getElementById('nc-degwrap'); var mw=document.getElementById('nc-memwrap'); var ow=document.getElementById('nc-offwrap'); if(dw)dw.style.display=(v==='degree')?'block':'none'; if(mw)mw.style.display=(v==='specific')?'block':'none'; if(ow)ow.style.display=(v==='office')?'block':'none'; }
 function submitNotice(){
   var title=(document.getElementById('nc-title')||{}).value; title=title?title.trim():'';
   var body=(document.getElementById('nc-body')||{}).value; body=body?body.trim():'';
@@ -2460,6 +2462,11 @@ function submitNotice(){
   var mode=(document.getElementById('nc-aud')||{}).value||'all';
   var toIds=['all'], opts={};
   if(mode==='degree'){ toIds=[]; opts.degree=(document.getElementById('nc-deg')||{}).value||'MM'; }
+  else if(mode==='office'){
+    opts.offices=Array.prototype.slice.call(document.querySelectorAll('.nc-off:checked')).map(function(x){return x.value;});
+    if(!opts.offices.length){alert('Select at least one office.');return;}
+    toIds=[];
+  }
   else if(mode==='specific'){
     toIds=Array.prototype.slice.call(document.querySelectorAll('.nc-mem:checked')).map(function(x){return x.value;});
     if(!toIds.length){alert('Select at least one brother.');return;}
@@ -2484,8 +2491,13 @@ function renderNoticeCompose(){
     h+='<div style="padding:0 14px 14px;border-top:1px solid var(--bdr)">';
     h+='<label class="lbl" style="display:block;margin-top:12px;margin-bottom:4px">Title</label><input id="nc-title" placeholder="Notice title" style="width:100%;margin-bottom:8px">';
     h+='<label class="lbl" style="display:block;margin-bottom:4px">Message</label><textarea id="nc-body" placeholder="Write the notice…" style="width:100%;min-height:90px;margin-bottom:8px"></textarea>';
-    h+='<label class="lbl" style="display:block;margin-bottom:4px">Send to</label><select id="nc-aud" onchange="_ncAud()" style="width:100%;margin-bottom:8px"><option value="all">All brethren</option><option value="degree">By degree</option><option value="specific">Specific brethren</option></select>';
+    h+='<label class="lbl" style="display:block;margin-bottom:4px">Send to</label><select id="nc-aud" onchange="_ncAud()" style="width:100%;margin-bottom:8px"><option value="all">All brethren</option><option value="degree">By degree</option><option value="office">By office</option><option value="specific">Specific brethren</option></select>';
     h+='<div id="nc-degwrap" style="display:none;margin-bottom:8px"><select id="nc-deg" style="width:100%"><option value="EA">First Degree and above</option><option value="FC">Second Degree and above</option><option value="MM" selected>Master Masons only</option></select></div>';
+    var _offs=[]; MEMBERS.forEach(function(m){ if(m.office&&_offs.indexOf(m.office)<0)_offs.push(m.office); }); _offs.sort();
+    h+='<div id="nc-offwrap" style="display:none;margin-bottom:8px;max-height:160px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px">';
+    if(!_offs.length)h+='<div style="font-size:12px;color:var(--t3)">No offices recorded.</div>';
+    _offs.forEach(function(o){ h+='<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="nc-off" value="'+esc(o)+'" style="width:16px;height:16px;flex:none">'+esc(o)+'</label>'; });
+    h+='</div>';
     h+='<div id="nc-memwrap" style="display:none;margin-bottom:8px;max-height:170px;overflow-y:auto;border:1px solid var(--bdr);border-radius:8px;padding:8px">';
     MEMBERS.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');}).forEach(function(m){ h+='<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;cursor:pointer"><input type="checkbox" class="nc-mem" value="'+m.id+'" style="width:16px;height:16px;flex:none">'+esc(dn(m))+'</label>'; });
     h+='</div>';
@@ -7539,7 +7551,7 @@ function _rtTick(){
     NOTICES = d.map(function(n){
       return {id:n.id, type:n.type||'info', title:n.title||'Notice', body:n.body||'',
               to:n.to_all?['all']:(n.to_ids||[]),
-              degree:n.to_degree||null, pinned:n.pinned===true,
+              degree:n.to_degree||null, offices:n.to_offices||[], pinned:n.pinned===true,
               archived:n.archived===true, expiresAt:n.expires_at||null,
               ts:n.created_at||new Date().toISOString(),
               date:(n.created_at||new Date().toISOString()).split('T')[0]};
@@ -10221,7 +10233,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 15:00:00');
+console.log('Portal build 2026-11-26 15:20:00');
 
 function toggleSharePractice(){
   if(!CU)return;
