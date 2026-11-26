@@ -1809,6 +1809,7 @@ function doLogin() {
             syncProgressDown();
             startRealtime();
             keepAlive();
+            buildNav();  // refresh the badge now that auto notices are in
           });
           document.getElementById('li-btn').style.opacity='1';
           document.getElementById('li-btn').textContent = 'Sign in';
@@ -2610,6 +2611,7 @@ function goTo(id){
   if(map[id])map[id]();
   closeDrawer();
   window._votingPoll=null;
+  buildNav();  // reconcile the unread badge with the notices actually shown
 }
 function toggleDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(!b)return; var open=b.classList.toggle('open'); if(s)s.classList.toggle('open',open); }
 function closeDrawer(){ var b=document.getElementById('bnav'); var s=document.getElementById('drawer-scrim'); if(b)b.classList.remove('open'); if(s)s.classList.remove('open'); }
@@ -6048,10 +6050,10 @@ var RSVP={};
 
 var stewardPayOpen=null;
 var stewardAmendOpen=null;
-function toggleStewardAmend(key){ stewardAmendOpen=(stewardAmendOpen===key?null:key); rPolls(); }
-function csAmendF1(pid,mid,yes){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f1=yes; rPolls(); }
-function csAmendF2(pid,mid,opt){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f2=opt; rPolls(); }
-function csSaveAmend(pid,mid){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; var v=p.votes[mid]||{}; if(v.f1===undefined){alert('Choose dining / not dining first.');return;} v._submitted=true; v._amendedBy=CU.id; v._submittedAt=new Date().toISOString(); supaUpsertVoteFor(pid,mid,v); stewardAmendOpen=null; rPolls(); }
+function toggleStewardAmend(key){ stewardAmendOpen=(stewardAmendOpen===key?null:key); window._votingPoll=stewardAmendOpen?String(key).split('|')[0]:null; rPolls(); }
+function csAmendF1(pid,mid,yes){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f1=yes; window._votingPoll=pid; rPolls(); }
+function csAmendF2(pid,mid,opt){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; if(!p.votes[mid])p.votes[mid]={}; p.votes[mid].f2=opt; window._votingPoll=pid; rPolls(); }
+function csSaveAmend(pid,mid){ var p=POLLS.find(function(x){return x.id===pid;}); if(!p)return; var v=p.votes[mid]||{}; if(v.f1===undefined){alert('Choose dining / not dining first.');return;} v._submitted=true; v._amendedBy=CU.id; v._submittedAt=new Date().toISOString(); supaUpsertVoteFor(pid,mid,v); stewardAmendOpen=null; window._votingPoll=null; rPolls(); }
 function supaUpsertVoteFor(pollId,memberId,answers){
   supa('poll_votes',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=representation'},
     body:JSON.stringify({poll_id:pollId,member_id:memberId,answers:answers,updated_at:new Date().toISOString()})
@@ -10364,7 +10366,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 16:55:00');
+console.log('Portal build 2026-11-26 15:45:58');
 
 function toggleSharePractice(){
   if(!CU)return;
