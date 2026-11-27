@@ -10495,7 +10495,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-27 10:21:12');
+console.log('Portal build 2026-11-27 10:26:22');
 
 function toggleSharePractice(){
   if(!CU)return;
@@ -10925,7 +10925,16 @@ function appInstalled(){
   try { return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; }
   catch(e){ return false; }
 }
+function isMobileDevice(){
+  try {
+    var ua=navigator.userAgent||'';
+    if(/android|iphone|ipad|ipod|mobile|silk|kindle/i.test(ua)) return true;
+    if((navigator.maxTouchPoints||0)>1 && /Macintosh/.test(ua)) return true; // iPadOS reports as Mac
+    return false;
+  } catch(e){ return false; }
+}
 function renderInstallCard(){
+  if(!isMobileDevice()) return '';        // home-screen install is a phone/tablet thing only
   if(appInstalled()) return '';
   try { if(sessionStorage.getItem('lon_install_dismiss')==='1') return ''; } catch(e){}
   var h='<div style="display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:12px">';
