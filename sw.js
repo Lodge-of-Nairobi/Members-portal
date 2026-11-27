@@ -3,7 +3,7 @@
 // serving a stale page when online. HTML is network-first so updates land on
 // the next online load; static assets are cache-first; Supabase (cross-origin)
 // is never intercepted.
-const CACHE = 'lon-portal-v3';
+const CACHE = 'lon-portal-v4';
 const SHELL = [
   './', './index.html', './register.html',
   './logo.png', './icon-192.png', './icon-512.png',
@@ -54,6 +54,45 @@ self.addEventListener('fetch', function(e){
         caches.open(CACHE).then(function(c){ c.put(req, cp); });
         return r;
       });
+    })
+  );
+});
+
+// ── Web Push ───────────────────────────────────────────────────────────────
+// A push arrives even when the app is closed. We show it and let the DEVICE
+// decide sound/vibration: no custom sound, no forced vibrate, not marked
+// silent — so a phone on silent / Do Not Disturb shows it quietly.
+self.addEventListener('push', function(e){
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; }
+  catch(err){ data = { title: 'Lodge of Nairobi № 7187', body: (e.data && e.data.text()) || '' }; }
+  var title = data.title || 'Lodge of Nairobi № 7187';
+  var options = {
+    body: data.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    data: { url: data.url || './index.html', pane: data.pane || '' }
+  };
+  if (data.tag) options.tag = data.tag;
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping a notification focuses the open app (or opens it), and asks it to
+// jump to the relevant pane if one was supplied.
+self.addEventListener('notificationclick', function(e){
+  e.notification.close();
+  var d = e.notification.data || {};
+  var target = d.url || './index.html';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list){
+      for (var i = 0; i < list.length; i++){
+        var c = list[i];
+        if (c.url.indexOf(location.origin) === 0 && 'focus' in c){
+          if (d.pane){ try { c.postMessage({ type: 'open-pane', pane: d.pane }); } catch(x){} }
+          return c.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(target);
     })
   );
 });

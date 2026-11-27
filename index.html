@@ -1619,6 +1619,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--navy)}
         <div><div class="settings-label">Check for updates</div><div class="settings-sub" id="updateSub">Sync the installed app with the latest version</div></div>
         <button class="btn btn-sm" id="updateBtn" onclick="checkForUpdates()">Check</button>
       </div>
+      <div class="settings-section-title">Notifications</div>
+      <div class="settings-row">
+        <div><div class="settings-label">Push notifications</div><div class="settings-sub" id="pushSub">Alerts for summons, polls and notices</div></div>
+        <button class="btn btn-sm" id="pushToggleBtn" onclick="togglePushOptOut()">On</button>
+      </div>
       <div class="settings-section-title">Data</div>
       <div class="settings-row">
         <div><div class="settings-label">Export passages</div><div class="settings-sub">Save all passage text to a file as backup</div></div>
@@ -1810,6 +1815,7 @@ function doLogin() {
             startRealtime();
             keepAlive();
             buildNav();  // refresh the badge now that auto notices are in
+            initPushNotifications();
           });
           document.getElementById('li-btn').style.opacity='1';
           document.getElementById('li-btn').textContent = 'Sign in';
@@ -8214,6 +8220,7 @@ function showTab(name){
   ['library','progress','settings'].forEach(n=>{ const b=document.getElementById('nav-'+n); if(b) b.classList.toggle('active',n===name); });
   if(name==='library') renderLibrary();
   if(name==='progress') renderProgress();
+  if(name==='settings' && typeof refreshPushSettingUI==='function') refreshPushSettingUI();
   if(name!=='practice'){ stopPracticeRecording(); stopPlayback(); window.speechSynthesis.cancel(); }
 }
 
@@ -10276,6 +10283,7 @@ function restoreSession(){
           if(!ex)NOTICES.unshift({id:'auto-'+p.id,type:'poll',title:'Poll: '+p.label,body:'An active poll is open for '+p.label+'. Please respond.',to:'all',date:(p.createdAt||new Date().toISOString()).split('T')[0],read:false});
         });
         checkSubsReminder(); checkMilestones(); syncProgressDown(); startRealtime(); keepAlive();
+        initPushNotifications();
       });
     }).catch(function(){});
   }).catch(function(){ try{localStorage.removeItem('lon_session');}catch(e){} });
@@ -10483,7 +10491,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-26 16:47:25');
+console.log('Portal build 2026-11-27 08:40:53');
 
 function toggleSharePractice(){
   if(!CU)return;
@@ -10799,6 +10807,113 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
+  // Tapping a push notification asks the app to jump to the relevant pane.
+  navigator.serviceWorker.addEventListener('message', function(ev){
+    if (ev.data && ev.data.type === 'open-pane' && ev.data.pane){
+      try { if (typeof goTo === 'function') goTo(ev.data.pane); } catch(e){}
+    }
+  });
+}
+
+// ── Web Push notifications ───────────────────────────────────────────────────
+// Default ON: after sign-in a brother sees a one-time acknowledgement (OK only);
+// tapping OK triggers the phone's own permission prompt and subscribes the device.
+// Notifications follow the phone's sound profile (handled in sw.js). A brother can
+// opt out in Settings.
+var VAPID_PUBLIC = 'BHnz0KVbTBLfwFMaiiW54bsgLa8OHf5-zHIrPXcFxEiQGxu0CKHYLcIIM35f8zvrxUGerOjFA7Iyr_pcDYu4HTY';
+function _urlB64ToUint8(b64){
+  var pad='='.repeat((4-b64.length%4)%4);
+  var base=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
+  var raw=atob(base); var out=new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i);
+  return out;
+}
+function pushSupported(){ return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window); }
+function pushOptedOut(){ try{ return localStorage.getItem('lon_push_optout')==='1'; }catch(e){ return false; } }
+function setPushOptOut(v){ try{ v?localStorage.setItem('lon_push_optout','1'):localStorage.removeItem('lon_push_optout'); }catch(e){} }
+
+function initPushNotifications(){
+  if(!pushSupported()) return;
+  if(pushOptedOut()) return;
+  if(Notification.permission==='granted'){ subscribeToPush(); return; }
+  if(Notification.permission==='denied') return;          // can't prompt; Settings explains how to re-enable
+  // 'default' → show the acknowledgement once per session; OK fires the OS prompt
+  try{ if(sessionStorage.getItem('lon_push_prompted')==='1') return; sessionStorage.setItem('lon_push_prompted','1'); }catch(e){}
+  showPushAckModal();
+}
+function showPushAckModal(){
+  if(document.getElementById('pushAckModal')) return;
+  var ov=document.createElement('div');
+  ov.id='pushAckModal';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(14,31,69,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px';
+  ov.innerHTML='<div style="background:var(--white);border-radius:14px;max-width:360px;padding:22px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3)">'
+    +'<div style="font-size:34px;margin-bottom:8px">&#128276;</div>'
+    +'<div style="font-size:17px;font-weight:700;color:var(--navy);margin-bottom:8px">Notifications</div>'
+    +'<div style="font-size:14px;color:var(--t2);line-height:1.5;margin-bottom:18px">This app will send you notifications for lodge matters — summons, meal polls and notices. They follow your phone’s sound settings, and you can turn them off any time in Settings.</div>'
+    +'<button class="btn btn-navy" style="width:100%;justify-content:center" onclick="ackPushAndSubscribe()">OK</button>'
+    +'</div>';
+  document.body.appendChild(ov);
+}
+function ackPushAndSubscribe(){
+  var m=document.getElementById('pushAckModal'); if(m)m.remove();
+  subscribeToPush();   // this tap is the user gesture the OS prompt needs
+}
+function subscribeToPush(){
+  if(!pushSupported()||pushOptedOut()) return;
+  Notification.requestPermission().then(function(perm){
+    if(perm!=='granted'){ refreshPushSettingUI(); return; }
+    navigator.serviceWorker.ready.then(function(reg){
+      reg.pushManager.getSubscription().then(function(existing){
+        if(existing){ savePushSubscription(existing); return; }
+        reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:_urlB64ToUint8(VAPID_PUBLIC) })
+          .then(savePushSubscription)
+          .catch(function(e){ console.warn('push subscribe failed', e); });
+      });
+    });
+  }).catch(function(){});
+}
+function savePushSubscription(sub){
+  if(!sub || typeof CU==='undefined' || !CU || !CU.id) return;
+  var j=sub.toJSON(); var keys=j.keys||{};
+  if(!j.endpoint || !keys.p256dh || !keys.auth) return;
+  supa('push_subscriptions',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates'},
+    body:JSON.stringify({ member_id:CU.id, endpoint:j.endpoint, p256dh:keys.p256dh, auth:keys.auth, user_agent:navigator.userAgent, last_seen:new Date().toISOString() })
+  }).catch(function(){});
+  refreshPushSettingUI();
+}
+function unsubscribeFromPush(){
+  if(!pushSupported()){ refreshPushSettingUI(); return; }
+  navigator.serviceWorker.ready.then(function(reg){
+    reg.pushManager.getSubscription().then(function(sub){
+      if(!sub){ refreshPushSettingUI(); return; }
+      var ep=sub.endpoint;
+      sub.unsubscribe().catch(function(){});
+      supa('push_subscriptions?endpoint=eq.'+encodeURIComponent(ep),{method:'DELETE'}).catch(function(){});
+      refreshPushSettingUI();
+    });
+  });
+}
+function togglePushOptOut(){
+  if(pushOptedOut()){
+    setPushOptOut(false);
+    if(Notification.permission==='granted') subscribeToPush();
+    else if(Notification.permission==='denied') alert('Notifications are blocked for this app in your phone settings. Turn them on there to receive alerts.');
+    else showPushAckModal();
+  } else {
+    setPushOptOut(true);
+    unsubscribeFromPush();
+  }
+  refreshPushSettingUI();
+}
+function refreshPushSettingUI(){
+  var btn=document.getElementById('pushToggleBtn'); var sub=document.getElementById('pushSub');
+  if(!btn) return;
+  if(!pushSupported()){ btn.textContent='N/A'; btn.disabled=true; if(sub)sub.textContent='Not supported on this device or browser'; return; }
+  btn.disabled=false;
+  if(pushOptedOut()){ btn.textContent='Off'; if(sub)sub.textContent='You have turned notifications off'; return; }
+  if(Notification.permission==='denied'){ btn.textContent='Blocked'; if(sub)sub.textContent='Blocked in phone settings — enable there to receive alerts'; return; }
+  if(Notification.permission==='granted'){ btn.textContent='On'; if(sub)sub.textContent='Alerts for summons, polls and notices'; return; }
+  btn.textContent='Enable'; if(sub)sub.textContent='Tap to turn notifications on';
 }
 </script>
 </body>
