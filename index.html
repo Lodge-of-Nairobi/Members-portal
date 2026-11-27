@@ -3041,7 +3041,7 @@ function rPolls(){
     h+='<option value="meeting">Lodge meeting</option>';
     h+='<option value="other">Other</option>';
     h+='</select></div></div>';
-    h+='<label style="display:flex;align-items:center;gap:8px;margin:4px 0 8px;font-size:13px;color:var(--t2)"><input type="checkbox" id="poll-is-meal" checked onchange="_pollMealToggle()"> Collect meal preference (members choose "Dining / Not dining")</label>';
+    h+='<label style="display:flex;align-items:flex-start;gap:8px;margin:4px 0 8px;font-size:13px;color:var(--t2);line-height:1.4"><input type="checkbox" id="poll-is-meal" checked onchange="_pollMealToggle()" style="width:16px;height:16px;flex:none;margin-top:1px"> <span>Collect meal preference (members choose &ldquo;Dining / Not dining&rdquo;)</span></label>';
     h+='<div id="poll-meal-row" class="fg"><label class="lbl">Meal options <span style="font-size:10px;color:var(--t3)">(comma-separated)</span></label>';
     h+='<input id="poll-meal-options" value="Vegetarian, Non-vegetarian">';
     h+='</div>';
@@ -10491,7 +10491,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-27 08:40:53');
+console.log('Portal build 2026-11-27 08:43:20');
 
 function toggleSharePractice(){
   if(!CU)return;
