@@ -1691,6 +1691,27 @@ function supa(path, opts) {
   return fetch(SUPA_URL + '/rest/v1/' + path, Object.assign({}, opts, {headers: headers}));
 }
 
+// Exchange the refresh token for a fresh access token; keeps a long-open session
+// authenticated (access tokens expire, by default after ~1 hour).
+function refreshAccessToken(){
+  var rt = SUPA_RTOKEN;
+  if(!rt){ try{ var s=JSON.parse(localStorage.getItem('lon_session')||'null'); rt = s && s.rt; }catch(e){} }
+  if(!rt) return Promise.resolve(null);
+  return fetch(SUPA_URL+'/auth/v1/token?grant_type=refresh_token',{
+    method:'POST',
+    headers:{'apikey':SUPA_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({refresh_token:rt})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d && d.access_token){
+      SUPA_TOKEN = d.access_token;
+      if(d.refresh_token) SUPA_RTOKEN = d.refresh_token;
+      try{ localStorage.setItem('lon_session', JSON.stringify({at:SUPA_TOKEN, rt:SUPA_RTOKEN, uid:(CU&&CU.id)||(d.user&&d.user.id)})); }catch(e){}
+      return SUPA_TOKEN;
+    }
+    return null;
+  }).catch(function(){ return null; });
+}
+
 function supaAuth(path, body, token) {
   return fetch(SUPA_URL + '/auth/v1/' + path, {
     method:  'POST',
@@ -2005,36 +2026,46 @@ function changePassword() {
   var conf = document.getElementById('pw-conf');
   if(!nw || nw.value.length < 6) { alert('New password must be at least 6 characters.'); return; }
   if(nw.value !== conf.value) { alert('Passwords do not match.'); return; }
-  // Supabase: PUT /auth/v1/user with Bearer token to update password
-  if(!SUPA_TOKEN) { alert('Session expired — please log out and log in again.'); return; }
-  fetch(SUPA_URL + '/auth/v1/user', {
-    method: 'PUT',
-    headers: {
-      'apikey':        SUPA_KEY,
-      'Authorization': 'Bearer ' + SUPA_TOKEN,
-      'Content-Type':  'application/json'
-    },
-    body: JSON.stringify({password: nw.value})
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    // Surface any error Supabase returns
-    if(data.error || data.error_code || data.message) {
-      alert('Password update failed: ' + (data.error_description || data.message || data.error || JSON.stringify(data)));
+  var newPw = nw.value;
+  var btn = (nw.closest ? nw.closest('.card') : null);
+  var putPassword = function(token){
+    return fetch(SUPA_URL + '/auth/v1/user', {
+      method: 'PUT',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({password: newPw})
+    }).then(function(r){ return r.json().then(function(d){ return {status:r.status, data:d||{}}; }); });
+  };
+  var finish = function(res){
+    var data = res.data || {};
+    var authBad = res.status===401 || res.status===403 ||
+      /expired|invalid|jwt/i.test(data.msg || data.error_description || data.error || data.error_code || '');
+    if(res.status>=200 && res.status<300 && !data.error && !data.msg && !data.error_code){
+      supa('members?id=eq.' + CU.id, { method:'PATCH', headers:{'Prefer':'return=minimal'}, body: JSON.stringify({first_login:false}) });
+      CU.firstLogin = false;
+      nw.value=''; if(conf) conf.value='';
+      alert('Password updated. Welcome to the Lodge of Nairobi № 7187 portal.');
+      goTo('home');
       return;
     }
-    // Mark first_login false in members table
-    supa('members?id=eq.' + CU.id, {
-      method: 'PATCH',
-      headers: {'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
-      body: JSON.stringify({first_login: false})
-    });
-    CU.firstLogin = false;
-    nw.value = ''; if(conf) conf.value = '';
-    alert('Password updated. Welcome to the Lodge of Nairobi № 7187 portal.');
-    goTo('home');
-  })
-  .catch(function(e) { alert('Network error: ' + e.message); });
+    if(authBad){ alert('Password update failed: your session has expired. Please log out and log in again, then try once more.'); return; }
+    alert('Password update failed: ' + (data.error_description || data.msg || data.error || ('HTTP '+res.status)));
+  };
+  // Refresh the access token first so a long-open session doesn't fail on an expired token.
+  refreshAccessToken().then(function(fresh){
+    var token = fresh || SUPA_TOKEN;
+    if(!token){ alert('Session expired — please log out and log in again.'); return; }
+    putPassword(token).then(function(res){
+      // One refresh + retry if the token was still rejected.
+      if(res.status===401 || res.status===403){
+        refreshAccessToken().then(function(t2){
+          if(!t2){ alert('Session expired — please log out and log in again.'); return; }
+          putPassword(t2).then(finish).catch(function(e){ alert('Network error: ' + e.message); });
+        });
+        return;
+      }
+      finish(res);
+    }).catch(function(e){ alert('Network error: ' + e.message); });
+  });
 }
 
 // ── Subscription config ───────────────────────────────────────────────────
@@ -7912,6 +7943,9 @@ function startRealtime(){
   _rtInterval = setInterval(_rtTick, 30000); // every 30 seconds
   // Also run once after 3 seconds for initial fresh data
   setTimeout(_rtTick, 3000);
+  // Keep the access token fresh so long-open sessions stay authenticated.
+  if(window._tokRefresh)clearInterval(window._tokRefresh);
+  window._tokRefresh = setInterval(function(){ refreshAccessToken(); }, 2700000); // every 45 min
 }
 
 function stopRealtime(){
@@ -10495,7 +10529,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-27 10:26:22');
+console.log('Portal build 2026-11-27 14:54:47');
 
 function toggleSharePractice(){
   if(!CU)return;
