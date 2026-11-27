@@ -1859,7 +1859,7 @@ function loadAppData() {
                 ts:n.created_at||new Date().toISOString(),
                 date:(n.created_at||new Date().toISOString()).split('T')[0]};
       });
-      if(CU&&CU.id){ supa('notice_reads?select=notice_id&member_id=eq.'+CU.id).then(function(r){return r.ok?r.json():[];}).then(function(rows){ (rows||[]).forEach(function(x){ _readIds[x.notice_id]=true; }); if(typeof buildNav==='function')buildNav(); }).catch(function(){}); }
+      if(CU&&CU.id){ supa('notice_reads?select=notice_id&member_id=eq.'+CU.id).then(function(r){return r.ok?r.json():[];}).then(function(rows){ (rows||[]).forEach(function(x){ _readIds[x.notice_id]=true; }); _readsLoaded=true; if(typeof buildNav==='function')buildNav(); }).catch(function(){ _readsLoaded=true; if(typeof buildNav==='function')buildNav(); }); } else { _readsLoaded=true; }
     }),
     safeFetch('polls?select=*,poll_votes(*)&order=created_at.desc', function(d) {
       POLLS = d.map(function(p) {
@@ -2593,11 +2593,11 @@ function buildNav(){
     }
   }
   var prev=_prevUnread||0;
-  var curr=unreadNotices().length;
+  var curr=_readsLoaded?unreadNotices().length:prev;
   if(curr>prev)vibe([100,50,100]);
   _prevUnread=curr;
   var ok=NAV_ROLES[CU.role]||[];
-  var unread=unreadNotices().length;
+  var unread=_readsLoaded?unreadNotices().length:0;
   document.getElementById('bnav').innerHTML=ALL_NAV.filter(function(n){
     return ok.indexOf(n.id)>-1;
   }).map(function(n){
@@ -5471,7 +5471,7 @@ function rHome(){
     if(typeof to==='string')return to==='all'||to===CU.id;
     return to.indexOf('all')>-1||to.indexOf(CU.id)>-1;
   });
-  var unread=unreadNotices().length;
+  var unread=_readsLoaded?unreadNotices().length:0;
   var pollPending=POLLS.some(function(p){ return p.active && !(p.votes[CU.id]&&p.votes[CU.id]._submitted===true); });
   var bubbles=unread+(pollPending?1:0);
   if(bubbles>0){
@@ -7685,6 +7685,7 @@ function addHistoricalSubPayment(){
 
 var _histDutiesOpen=false;
 var _readIds={};  // session cache — backed by Supabase notice_reads table
+var _readsLoaded=false;  // true once notice_reads has hydrated; gates the badge so it doesn't flash a false count on login
 var _histSubOpen=false;
 
 
@@ -10491,7 +10492,7 @@ function syncProgressDown(){
 window.addEventListener('online', function(){ syncProgressUp(); });
 setInterval(function(){ if(navigator.onLine) syncProgressUp(); }, 120000); // every 2 min
 
-console.log('Portal build 2026-11-27 08:43:20');
+console.log('Portal build 2026-11-27 09:08:03');
 
 function toggleSharePractice(){
   if(!CU)return;
